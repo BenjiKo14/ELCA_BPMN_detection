@@ -1,0 +1,8 @@
+yamlu==0.0.17
+tqdm==4.66.4
+torchvision==0.18.0
+azure-ai-vision-imageanalysis==1.0.0b2
+streamlit==1.35.0
+streamlit-image-comparison==0.0.4
+streamlit-cropper==0.2.2
+streamlit-drawable-canvas==0.9.3
