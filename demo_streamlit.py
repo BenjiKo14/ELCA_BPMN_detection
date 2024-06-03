@@ -17,6 +17,8 @@ from streamlit_image_comparison import image_comparison
 from xml.dom import minidom
 from streamlit_cropper import st_cropper
 from streamlit_drawable_canvas import st_canvas
+from train import get_faster_rcnn_model, get_arrow_model
+import gdown
 
 def read_xml_file(filepath):
     """ Read XML content from a file """
@@ -185,12 +187,26 @@ def load_model():
     if 'model_loaded' not in st.session_state:
         st.session_state.model_loaded = False
 
-    if not st.session_state.model_loaded:
-        opti_name = 'Adam'
-        model_to_load = 'model_AdamW_60ep_4batch_trainval_blur00_crop01_flip01_rotate02_only_arrow6_withkey'
-        model_arrow, _, _ = prepare_model(arrow_dict, opti_name, model_to_load=model_to_load, model_type='arrow')
-        model_to_load = 'model_AdamW_30ep_4batch_trainval_blur02_crop03_flip02_rotate02_only_object2'
-        model_object, _, _ = prepare_model(object_dict, opti_name, model_to_load=model_to_load, model_type='object')
+    if not st.session_state.model_loaded:        
+        model_object = get_faster_rcnn_model(len(object_dict))
+        model_arrow = get_arrow_model(len(arrow_dict),2)
+
+        url_arrow = 'https://drive.google.com/uc?id=1xwfvo7BgDWz-1jAiJC1DCF0Wp8YlFNWt'
+        url_object = 'https://drive.google.com/uc?id=1GiM8xOXG6M6r8J9HTOeMJz9NKu7iumZi'
+
+        # Define paths to save models
+        output_arrow = 'model_arrow.pth'
+        output_object = 'model_object.pth'
+
+        # Download models using gdown
+        gdown.download(url_arrow, output_arrow, quiet=False)
+        gdown.download(url_object, output_object, quiet=False)
+
+        # Load models
+        with st.spinner('Loading model...'):
+            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            model_arrow.load_state_dict(torch.load(output_arrow, map_location=device))
+            model_object.load_state_dict(torch.load(output_object, map_location=device))
         st.session_state.model_loaded = True
         st.session_state.model_arrow = model_arrow
         st.session_state.model_object = model_object
