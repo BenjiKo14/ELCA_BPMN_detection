@@ -9,12 +9,16 @@ import networkx as nx
 from eval import iou
 from utils import class_dict
 import json
+import streamlit as st
 
 #with open("VISION_KEY.json", "r") as json_file:
     #json_data = json.load(json_file)
 
 #VISION_KEY = json_data["VISION_KEY"]
 #VISION_ENDPOINT = json_data["VISION_ENDPOINT"]
+
+VISION_KEY = st.secrets["VISION_KEY"]
+VISION_ENDPOINT = st.secrets["VISION_ENDPOINT"]
 
 def rescale(scale, boxes):
     for i in range(len(boxes)):

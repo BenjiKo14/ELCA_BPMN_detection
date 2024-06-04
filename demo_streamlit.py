@@ -183,6 +183,7 @@ def display_XML(bpmn_xml):
     components.html(html_template, height=1000, width=1500)
 
 def load_model():
+
     """Load the model only once, and use session state to keep track of it."""
     if 'model_loaded' not in st.session_state:
         st.session_state.model_loaded = False
