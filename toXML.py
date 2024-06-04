@@ -287,9 +287,9 @@ def create_flow_element(bpmn, text_mapping, idx, size, data, parent, message=Fal
         waypoints = calculate_pool_waypoints(idx, data, size, source_idx, target_idx, source_id.split('_')[0], target_id.split('_')[0])
         #waypoints = data['best_points'][idx]
         if source_id.split('_')[0] == 'pool':
-            source_id = f'participant_{source_id.split('_')[1]}'
+            source_id = f"participant_{source_id.split('_')[1]}"
         if target_id.split('_')[0] == 'pool':
-            target_id = f'participant_{target_id.split('_')[1]}'
+            target_id = f"participant_{target_id.split('_')[1]}"
     else:
         waypoints = calculate_waypoints(data, size, source_id, target_id)
 
