@@ -203,19 +203,15 @@ def load_model():
         gdown.download(url_object, output_object, quiet=False)
 
         # Load models
-        with st.spinner('Loading model...'):
-            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-            model_arrow.load_state_dict(torch.load(output_arrow, map_location=device))
-            model_object.load_state_dict(torch.load(output_object, map_location=device))
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        model_arrow.load_state_dict(torch.load(output_arrow, map_location=device))
+        model_object.load_state_dict(torch.load(output_object, map_location=device))
         st.session_state.model_loaded = True
         st.session_state.model_arrow = model_arrow
         st.session_state.model_object = model_object
 
 from PIL import Image, ImageEnhance
 def prepare_image(image, pad=True, new_size=(1333, 1333)):
-    # Preprocess the image
-    
-
     original_size = image.size
     # Calculate scale to fit the new size while maintaining aspect ratio
     scale = min(new_size[0] / original_size[0], new_size[1] / original_size[1])
@@ -307,7 +303,8 @@ def main():
         st.session_state.pool_bboxes = []
 
     # Load the model using the defined function
-    load_model()
+    with st.spinner('Loading model...'):
+        load_model()
 
     # Now, you can access the models from session_state anywhere in your app
     model_arrow = st.session_state.model_arrow
