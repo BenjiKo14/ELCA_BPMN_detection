@@ -200,8 +200,15 @@ def load_model():
         output_object = 'model_object.pth'
 
         # Download models using gdown
-        gdown.download(url_arrow, output_arrow, quiet=False)
-        gdown.download(url_object, output_object, quiet=False)
+        if not Path(output_arrow).exists():
+            # Download models using gdown
+            gdown.download(url_arrow, output_arrow, quiet=False)
+        else:
+            print('Model arrow downloaded from local')
+        if not Path(output_object).exists():
+            gdown.download(url_object, output_object, quiet=False)
+        else:
+            print('Model object downloaded from local')
 
         # Load models
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -225,7 +232,7 @@ def prepare_image(image, pad=True, new_size=(1333, 1333)):
         image = enhancer.enhance(1.5)  # Adjust the brightness if necessary
         # Pad the resized image to make it exactly the desired size
         padding = [0, 0, new_size[0] - new_scaled_size[0], new_size[1] - new_scaled_size[1]]
-        image = F.pad(image, padding, fill=200, padding_mode='constant')
+        image = F.pad(image, padding, fill=200, padding_mode='edge')
 
     
     return new_scaled_size, image

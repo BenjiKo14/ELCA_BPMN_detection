@@ -201,7 +201,7 @@ def regroup_elements_by_pool(boxes, labels, class_dict):
 
         # Iterate over all elements
         for i, box in enumerate(boxes):
-            if i in pool_indices or class_dict[labels[i]] == 'messageFlow':
+            if i in pool_indices or class_dict[labels[i]] == 'messageFlow' or class_dict[labels[i]] == 'pool' or class_dict[labels[i]] == 'lane':
                 continue  # Skip pool boxes themselves and messageFlow elements
             assigned_to_pool = False
             for j, pool_box in enumerate(pool_boxes):
@@ -269,6 +269,22 @@ def correction_labels(boxes, labels, class_dict, pool_dict, flow_links):
 
 
 def last_correction(boxes, labels, scores, keypoints, links, best_points, pool_dict):
+
+    #delete pool that are have only messageFlow on it
+    delete_pool = []
+    for pool_index, elements in pool_dict.items():
+        if all([labels[i] == list(class_dict.values()).index('messageFlow') for i in elements]):
+            if len(elements) > 0:
+                delete_pool.append(pool_dict[pool_index])
+                print(f"Pool {pool_index} contains only messageFlow elements, deleting it")
+
+    #sort index
+    delete_pool = sorted(delete_pool, reverse=True)
+    for pool in delete_pool:
+        index = list(pool_dict.keys())[list(pool_dict.values()).index(pool)]
+        del pool_dict[index]
+
+
     delete_elements = []
     # Check if there is an arrow that has the same links
     for i in range(len(labels)):
@@ -289,16 +305,6 @@ def last_correction(boxes, labels, scores, keypoints, links, best_points, pool_d
     keypoints = np.delete(keypoints, delete_elements, axis=0)
     links = np.delete(links, delete_elements, axis=0)
     best_points = [point for i, point in enumerate(best_points) if i not in delete_elements]
-
-    #delete pool that are have only messageFlow on it
-    delete_pool = []
-    for pool_index, elements in pool_dict.items():
-        if all([labels[i] == list(class_dict.values()).index('messageFlow') for i in elements]):
-            delete_pool.append(pool_dict[pool_index])
-
-    for pool in delete_pool:
-        index = list(pool_dict.keys())[list(pool_dict.values()).index(pool)]
-        del pool_dict[index]
 
     return boxes, labels, scores, keypoints, links, best_points, pool_dict
 
