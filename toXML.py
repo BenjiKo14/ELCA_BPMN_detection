@@ -221,7 +221,9 @@ def calculate_pool_bounds(data, keep_elements, size):
     min_x = min_y = float('10000')
     max_x = max_y = float('0')
     
+    print(keep_elements)
     for i in keep_elements:
+        print(data['BPMN_id'][i])
         element = data['BPMN_id'][i]
         if element is None or data['labels'][i] == 13 or data['labels'][i] == 14 or data['labels'][i] == 15 or data['labels'][i] == 7: 
             continue
