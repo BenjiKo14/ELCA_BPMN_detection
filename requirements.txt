@@ -7,5 +7,4 @@ streamlit-image-comparison==0.0.4
 streamlit-cropper==0.2.2
 streamlit-drawable-canvas==0.9.3
 opencv-python
-gdown
-libgl1-mesa-glx
+gdow
