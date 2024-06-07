@@ -370,6 +370,10 @@ def perform_inference(model_object, model_arrow, image, score_threshold):
     # Remove the original image display
     image_placeholder.empty()
 
+@st.cache_data
+def get_image(uploaded_file):
+    return Image.open(uploaded_file).convert('RGB')
+
 def main():
     st.set_page_config(layout="wide")
     st.title("BPMN model recognition demo")
@@ -392,7 +396,7 @@ def main():
 
     # Display the uploaded image if the user has uploaded an image
     if uploaded_file is not None:
-        original_image = Image.open(uploaded_file).convert('RGB')
+        original_image = get_image(uploaded_file)
         col1, col2 = st.columns(2)
 
         # Create a cropper to allow the user to crop the image and display the cropped image
