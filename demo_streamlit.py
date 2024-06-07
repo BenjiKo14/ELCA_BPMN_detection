@@ -258,6 +258,7 @@ def load_model():
     """Load the model only once, and use session state to keep track of it."""
     if 'model_loaded' not in st.session_state:
         st.session_state.model_loaded = False
+        st.session_state.prediction_up = False
 
     if not st.session_state.model_loaded:        
         model_object = get_faster_rcnn_model(len(object_dict))
