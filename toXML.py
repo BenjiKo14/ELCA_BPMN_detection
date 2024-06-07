@@ -9,43 +9,50 @@ def rescale(scale, boxes):
                             boxes[i][3]*scale]
     return boxes
 
-def create_BPMN_id(data):   
-    enum_end, enum_start, enum_task, enum_sequence, enum_dataflow, enum_messflow, enum_messageEvent, enum_exclusiveGateway, enum_parallelGateway, enum_pool = 1, 1, 1, 1, 1, 1, 1, 1, 1, 1
-    BPMN_name = [class_dict[data['labels'] [i]] for i in range(len(data['labels'] ))]
-    for idx,Bpmn_id in enumerate(BPMN_name):
+def create_BPMN_id(data):
+    enums = {
+        'end_event': 1,
+        'start_event': 1,
+        'task': 1,
+        'sequenceFlow': 1,
+        'messageFlow': 1,
+        'message_event': 1,
+        'exclusiveGateway': 1,
+        'parallelGateway': 1,
+        'dataAssociation': 1,
+        'pool': 1,
+        'dataObject': 1,
+        'timerEvent': 1
+    }
+
+    BPMN_name = [class_dict[label] for label in data['labels']]
+
+    for idx, Bpmn_id in enumerate(BPMN_name):
         if Bpmn_id == 'event':
             if data['links'][idx][0] is not None and data['links'][idx][1] is None:
-                data['BPMN_id'][idx] = f'end_event_{enum_end}'
-                enum_end += 1
+                key = 'end_event'
             elif data['links'][idx][0] is None and data['links'][idx][1] is not None:
-                data['BPMN_id'][idx] = f'start_event_{enum_start}'
-                enum_start += 1
-        elif Bpmn_id == 'task' or Bpmn_id == 'dataObject':
-            data['BPMN_id'][idx] = f'task_{enum_task}'
-            enum_task += 1
-        elif Bpmn_id == 'sequenceFlow':
-            data['BPMN_id'][idx] = f'sequenceFlow_{enum_sequence}'
-            enum_sequence += 1
-        elif Bpmn_id == 'messageFlow':
-            data['BPMN_id'][idx] = f'messageFlow_{enum_messflow}'
-            enum_messflow += 1
-        elif Bpmn_id == 'messageEvent':
-            data['BPMN_id'][idx] = f'message_event_{enum_messageEvent}'
-            enum_messageEvent += 1
-        elif Bpmn_id == 'exclusiveGateway':
-            data['BPMN_id'][idx] = f'exclusiveGateway_{enum_exclusiveGateway}'
-            enum_exclusiveGateway += 1
-        elif Bpmn_id == 'parallelGateway':
-            data['BPMN_id'][idx] = f'parallelGateway_{enum_parallelGateway}'
-            enum_parallelGateway += 1
-        elif Bpmn_id == 'dataAssociation':
-            data['BPMN_id'][idx] = f'dataAssociation_{enum_sequence}'
-            enum_dataflow += 1
-        elif Bpmn_id == 'pool':
-            data['BPMN_id'][idx] = f'pool_{enum_pool}'
-            enum_pool += 1
+                key = 'start_event'
+        else:
+            key = {
+                'task': 'task',
+                'dataObject': 'dataObject',
+                'sequenceFlow': 'sequenceFlow',
+                'messageFlow': 'messageFlow',
+                'messageEvent': 'message_event',
+                'exclusiveGateway': 'exclusiveGateway',
+                'parallelGateway': 'parallelGateway',
+                'dataAssociation': 'dataAssociation',
+                'pool': 'pool',
+                'timerEvent': 'timerEvent'
+            }.get(Bpmn_id, None)
+
+        if key:
+            data['BPMN_id'][idx] = f'{key}_{enums[key]}'
+            enums[key] += 1
 
     return data
+
 
 
 def add_diagram_elements(parent, element_id, x, y, width, height):
@@ -83,29 +90,68 @@ def check_status(link, keep_elements):
         return 'end'
     else:
         return 'middle'
+    
+def check_data_association(i, links, labels, keep_elements):
+    for j, (k,l) in enumerate(links):
+        if labels[j] == 14:
+            if k==i:
+                return 'output',j
+            elif l==i:
+                return 'input',j
+            
+    return 'no association', None
 
+def create_data_Association(bpmn,data,size,element_id,source_id,target_id):
+    waypoints = calculate_waypoints(data, size, source_id, target_id)
+    add_diagram_edge(bpmn, element_id, waypoints)
+        
 # Function to dynamically create and layout BPMN elements
-def create_bpmn_elements(idx, bpmnplane, text_mapping, definitions,size, data, keep_elements):
-    process = ET.SubElement(definitions, 'bpmn:process', id=f'process_{idx+1}', isExecutable='true')
+def create_bpmn_object(process, bpmnplane, text_mapping, definitions, size, data, keep_elements):
     elements = data['BPMN_id']
     positions = data['boxes']
-    
-    for i, name in enumerate(elements):
-        if i not in keep_elements:
+    links = data['links']
+
+    for i in keep_elements:
+        element_id = elements[i]
+        if element_id is None:
             continue
-        element_id = name
-        if element_id is None:   
-            continue
-        x,y = positions[i][:2]
-        if name.split('_')[0] == 'start':
+        
+        element_type = element_id.split('_')[0]
+        x, y = positions[i][:2]
+
+        # Start Event
+        if element_type == 'start':
             element = ET.SubElement(process, 'bpmn:startEvent', id=element_id, name=text_mapping[element_id])
             add_diagram_elements(bpmnplane, element_id, x, y, size['start'][0], size['start'][1])
-        elif name.split('_')[0] == 'task':
+
+        # Task
+        elif element_type == 'task':
             element = ET.SubElement(process, 'bpmn:task', id=element_id, name=text_mapping[element_id])
+            status, dataAssociation_idx = check_data_association(i, data['links'], data['labels'], keep_elements)
+
+            # Handle Data Input Association
+            if status == 'input':
+                dataObject_idx = links[dataAssociation_idx][0]
+                dataObject_name = elements[dataObject_idx]
+                dataObject_ref = f'DataObjectReference_{dataObject_name.split("_")[1]}'
+                sub_element = ET.SubElement(element, 'bpmn:dataInputAssociation', id=f'dataInputAssociation_{dataObject_ref.split("_")[1]}')
+                ET.SubElement(sub_element, 'bpmn:sourceRef').text = dataObject_ref
+                create_data_Association(bpmnplane, data, size, sub_element.attrib['id'], dataObject_name, element_id)
+
+            # Handle Data Output Association
+            elif status == 'output':
+                dataObject_idx = links[dataAssociation_idx][1]
+                dataObject_name = elements[dataObject_idx]
+                dataObject_ref = f'DataObjectReference_{dataObject_name.split("_")[1]}'
+                sub_element = ET.SubElement(element, 'bpmn:dataOutputAssociation', id=f'dataOutputAssociation_{dataObject_ref.split("_")[1]}')
+                ET.SubElement(sub_element, 'bpmn:targetRef').text = dataObject_ref
+                create_data_Association(bpmnplane, data, size, sub_element.attrib['id'], element_id, dataObject_name)
+
             add_diagram_elements(bpmnplane, element_id, x, y, size['task'][0], size['task'][1])
-        elif name.split('_')[0] == 'message':
-            #check start, intermediate, end
-            status = check_status(data['links'][i],keep_elements)
+
+        # Message Events (Start, Intermediate, End)
+        elif element_type == 'message':
+            status = check_status(links[i], keep_elements)
             if status == 'start':
                 element = ET.SubElement(process, 'bpmn:startEvent', id=element_id, name=text_mapping[element_id])
             elif status == 'middle':
@@ -114,15 +160,33 @@ def create_bpmn_elements(idx, bpmnplane, text_mapping, definitions,size, data, k
                 element = ET.SubElement(process, 'bpmn:endEvent', id=element_id, name=text_mapping[element_id])
             ET.SubElement(element, 'bpmn:messageEventDefinition', id=f'MessageEventDefinition_{i+1}')
             add_diagram_elements(bpmnplane, element_id, x, y, size['message'][0], size['message'][1])
-        elif name.split('_')[0] == 'end':
+
+        # End Event
+        elif element_type == 'end':
             element = ET.SubElement(process, 'bpmn:endEvent', id=element_id, name=text_mapping[element_id])
             add_diagram_elements(bpmnplane, element_id, x, y, size['end'][0], size['end'][1])
-        elif name.split('_')[0] == 'exclusiveGateway':
-            element = ET.SubElement(process, 'bpmn:exclusiveGateway', id=element_id)
-            add_diagram_elements(bpmnplane, element_id, x, y, size['exclusiveGateway'][0], size['exclusiveGateway'][1])
-        elif name.split('_')[0] == 'parallelGateway':
-            element = ET.SubElement(process, 'bpmn:parallelGateway', id=element_id)
-            add_diagram_elements(bpmnplane, element_id, x, y, size['exclusiveGateway'][0], size['exclusiveGateway'][1])
+
+        # Gateways (Exclusive, Parallel)
+        elif element_type in ['exclusiveGateway', 'parallelGateway']:
+            gateway_type = 'exclusiveGateway' if element_type == 'exclusiveGateway' else 'parallelGateway'
+            element = ET.SubElement(process, f'bpmn:{gateway_type}', id=element_id)
+            add_diagram_elements(bpmnplane, element_id, x, y, size[element_type][0], size[element_type][1])
+
+        # Data Object
+        elif element_type == 'dataObject':
+            dataObject_idx = element_id.split('_')[1]
+            dataObject_ref = f'DataObjectReference_{dataObject_idx}'
+            element = ET.SubElement(process, 'bpmn:dataObjectReference', id=dataObject_ref, dataObjectRef=element_id, name=text_mapping[element_id])
+            ET.SubElement(process, 'bpmn:dataObject', id=element_id)
+            add_diagram_elements(bpmnplane, dataObject_ref, x, y, size['dataObject'][0], size['dataObject'][1])
+
+        # Timer Event
+        elif element_type == 'timerEvent':
+            element = ET.SubElement(process, 'bpmn:intermediateCatchEvent', id=element_id, name=text_mapping[element_id])
+            ET.SubElement(element, 'bpmn:timerEventDefinition', id=f'TimerEventDefinition_{i+1}')
+            add_diagram_elements(bpmnplane, element_id, x, y, size['timerEvent'][0], size['timerEvent'][1])
+
+
 
 # Calculate simple waypoints between two elements (this function assumes direct horizontal links for simplicity)
 def calculate_waypoints(data, size, source_id, target_id):
@@ -151,20 +215,12 @@ def calculate_waypoints(data, size, source_id, target_id):
         source_y += size_y_source / 2
         target_x  = target_x
         target_y += size_y_target / 2
-        #if the source is a task and it's going up
-        if relative_y < -size['task'][1] and data['labels'][source_idx] == list(class_dict.values()).index('task'):
+        #if the source is going up
+        if relative_y < -size[name_source][1]:
             source_x -= size_x_source / 2
             source_y -= size_y_source / 2
-        #if the source is a task and it's going down
-        elif relative_y > size['task'][1] and data['labels'][source_idx] == list(class_dict.values()).index('task'):
-            source_x -= size_x_source / 2
-            source_y += size_y_source / 2
-        #if the source is a gateway and it's going up
-        if relative_y < -size['parallelGateway'][1]/2 and (data['labels'][source_idx] == list(class_dict.values()).index('exclusiveGateway') or data['labels'][source_idx] == list(class_dict.values()).index('parallelGateway')):
-            source_x -= size_x_source / 2
-            source_y -= size_y_source / 2
-        #if the source is a gateway and it's going down
-        elif relative_y > size['parallelGateway'][1]/2 and (data['labels'][source_idx] == list(class_dict.values()).index('exclusiveGateway') or data['labels'][source_idx] == list(class_dict.values()).index('parallelGateway')):
+        #if the source is going down
+        elif relative_y > size[name_source][1]:
             source_x -= size_x_source / 2
             source_y += size_y_source / 2
     #if it going to left
@@ -173,33 +229,23 @@ def calculate_waypoints(data, size, source_id, target_id):
         source_y += size_y_source / 2
         target_x += size_x_target
         target_y += size_y_target / 2
-        #if the source is a task and it's going up
-        if relative_y < -size['task'][1] and data['labels'][source_idx] == list(class_dict.values()).index('task'):
+        #if the source is going up
+        if relative_y < -size[name_source][1]:
             source_x += size_x_source / 2
             source_y -= size_y_source / 2
-        #if the source is a task and it's going down
-        elif relative_y > size['task'][1] and data['labels'][source_idx] == list(class_dict.values()).index('task'):
+        #if the source is going down
+        elif relative_y > size[name_source][1]:
             source_x += size_x_source / 2
-            source_y += size_y_source / 2
-        #if the source is a gateway and it's going up
-        if relative_y < -size['parallelGateway'][1]/2 and (data['labels'][source_idx] == list(class_dict.values()).index('exclusiveGateway') or data['labels'][source_idx] == list(class_dict.values()).index('parallelGateway')):
-            source_x += size_x_source / 2
-            source_y -= size_y_source / 2
-        #if the source is a gateway and it's going down
-        elif relative_y > size['parallelGateway'][1]/2 and (data['labels'][source_idx] == list(class_dict.values()).index('exclusiveGateway') or data['labels'][source_idx] == list(class_dict.values()).index('parallelGateway')):
-            source_x += size_x_source / 2
-            source_y += size_y_source / 2
-
-    
+            source_y += size_y_source / 2    
     #if it going up and down
     elif -size[name_source][0] < relative_x < size[name_source][0]:
         source_x += size_x_source / 2
         target_x += size_x_target / 2
         #if it's going down
-        if relative_y >= size[name_source][1]/3:
+        if relative_y >= size[name_source][1]/2:
             source_y += size_y_source
         #if it's going up
-        elif relative_y < -size[name_source][1]/3:
+        elif relative_y < -size[name_source][1]/2:
             source_y = source_y
             target_y += size_y_target
         else:
@@ -221,11 +267,12 @@ def calculate_pool_bounds(data, keep_elements, size):
     min_x = min_y = float('10000')
     max_x = max_y = float('0')
     
-    print(keep_elements)
     for i in keep_elements:
-        print(data['BPMN_id'][i])
+        if i >= len(data['BPMN_id']):
+            print("Problem with the index")
+            continue
         element = data['BPMN_id'][i]
-        if element is None or data['labels'][i] == 13 or data['labels'][i] == 14 or data['labels'][i] == 15 or data['labels'][i] == 7: 
+        if element is None or data['labels'][i] == 13 or data['labels'][i] == 14 or data['labels'][i] == 15 or data['labels'][i] == 7 or data['labels'][i] == 15: 
             continue
         
         element_type = element.split('_')[0]
@@ -239,8 +286,7 @@ def calculate_pool_bounds(data, keep_elements, size):
     
     return min_x, min_y, max_x, max_y
 
-
-
+    
 def calculate_pool_waypoints(idx, data, size, source_idx, target_idx, source_element, target_element):
     # Get the bounding boxes of the source and target elements
     source_box = data['boxes'][source_idx]
@@ -294,6 +340,7 @@ def create_flow_element(bpmn, text_mapping, idx, size, data, parent, message=Fal
             target_id = f"participant_{target_id.split('_')[1]}"
     else:
         waypoints = calculate_waypoints(data, size, source_id, target_id)
+        #waypoints = data['best_points'][idx]
 
     #waypoints = data['best_points'][idx]
     if message:
@@ -301,3 +348,4 @@ def create_flow_element(bpmn, text_mapping, idx, size, data, parent, message=Fal
     else:
         element = ET.SubElement(parent, 'bpmn:sequenceFlow', id=element_id, sourceRef=source_id, targetRef=target_id, name=text_mapping[data['BPMN_id'][idx]])
     add_diagram_edge(bpmn, element_id, waypoints)
+

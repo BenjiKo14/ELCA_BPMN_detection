@@ -9,3 +9,5 @@ VISION_KEY.json
 *.pth
 
 .streamlit/secrets.toml
+
+backup/

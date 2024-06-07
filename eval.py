@@ -191,6 +191,7 @@ def regroup_elements_by_pool(boxes, labels, class_dict):
     if not pool_indices:
         # If no pools or lanes are detected, create a single pool with all elements
         pool_dict[0] = list(range(len(boxes)))
+        labels = np.append(labels, list(class_dict.values()).index('pool'))
     else:
         # Initialize each pool index with an empty list
         for pool_index in pool_indices:
@@ -201,7 +202,7 @@ def regroup_elements_by_pool(boxes, labels, class_dict):
 
         # Iterate over all elements
         for i, box in enumerate(boxes):
-            if i in pool_indices or class_dict[labels[i]] == 'messageFlow' or class_dict[labels[i]] == 'pool' or class_dict[labels[i]] == 'lane':
+            if i in pool_indices or class_dict[labels[i]] == 'messageFlow':
                 continue  # Skip pool boxes themselves and messageFlow elements
             assigned_to_pool = False
             for j, pool_box in enumerate(pool_boxes):
@@ -213,7 +214,7 @@ def regroup_elements_by_pool(boxes, labels, class_dict):
                     assigned_to_pool = True
                     break
             if not assigned_to_pool:
-                if class_dict[labels[i]] != 'messageFlow':
+                if class_dict[labels[i]] != 'messageFlow' and class_dict[labels[i]] != 'lane':
                     elements_not_in_pool.append(i)
 
         if elements_not_in_pool:
@@ -228,9 +229,7 @@ def regroup_elements_by_pool(boxes, labels, class_dict):
     # Merge non-empty pools followed by empty pools
     pool_dict = {**non_empty_pools, **empty_pools}
 
-    return pool_dict
-
-
+    return pool_dict, labels
 
 
 def create_links(keypoints, boxes, labels, class_dict):
@@ -246,6 +245,15 @@ def create_links(keypoints, boxes, labels, class_dict):
         else:
             best_points.append([None,None])
             links.append([None,None])
+
+    for i in range(len(labels)):
+        if labels[i]==list(class_dict.values()).index('dataAssociation'):
+            closest1, point_start = find_closest_object(keypoints[i][0], boxes, labels)
+            closest2, point_end = find_closest_object(keypoints[i][1], boxes, labels)
+            if closest1 is not None and closest2 is not None:
+                best_points[i] = ([point_start, point_end])
+                links[i] = ([closest1, closest2])
+
     return links, best_points
 
 def correction_labels(boxes, labels, class_dict, pool_dict, flow_links):
@@ -306,6 +314,10 @@ def last_correction(boxes, labels, scores, keypoints, links, best_points, pool_d
     links = np.delete(links, delete_elements, axis=0)
     best_points = [point for i, point in enumerate(best_points) if i not in delete_elements]
 
+    #also delete the element in the pool_dict
+    for pool_index, elements in pool_dict.items():
+        pool_dict[pool_index] = [i for i in elements if i not in delete_elements]
+
     return boxes, labels, scores, keypoints, links, best_points, pool_dict
 
 def give_link_to_element(links, labels):
@@ -333,7 +345,7 @@ def full_prediction(model_object, model_arrow, image, score_threshold=0.5, iou_t
         boxes, labels, scores, keypoints = mix_predictions(objects_pred, arrow_pred)
     
         # Regroup elements by pool
-        pool_dict = regroup_elements_by_pool(boxes,labels, class_dict)
+        pool_dict, labels = regroup_elements_by_pool(boxes,labels, class_dict)
         # Create links between elements
         flow_links, best_points = create_links(keypoints, boxes, labels, class_dict)
         #Correct the labels of some sequenceflow that cross multiple pool
@@ -341,7 +353,6 @@ def full_prediction(model_object, model_arrow, image, score_threshold=0.5, iou_t
         #give a link to event to allow the creation of the BPMN id with start, indermediate and end event
         flow_links = give_link_to_element(flow_links, labels)
         
-
         boxes,labels,scores,keypoints,flow_links,best_points,pool_dict = last_correction(boxes,labels,scores,keypoints,flow_links,best_points, pool_dict)            
 
         image = image.permute(1, 2, 0).cpu().numpy()

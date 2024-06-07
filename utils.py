@@ -61,6 +61,13 @@ class_dict = {
     15: 'messageFlow',
 }
 
+def rescale_boxes(scale, boxes):
+    for i in range(len(boxes)):
+                boxes[i] = [boxes[i][0]*scale,
+                            boxes[i][1]*scale,
+                            boxes[i][2]*scale,
+                            boxes[i][3]*scale]
+    return boxes
 
 def iou(box1, box2):
     # Calcule l'intersection des deux boîtes englobantes
@@ -73,6 +80,22 @@ def iou(box1, box2):
     union_area = box1_area + box2_area - inter_area
 
     return inter_area / union_area
+
+def proportion_inside(box1, box2):
+    # Calculate the intersection of the two bounding boxes
+    inter_box = [max(box1[0], box2[0]), max(box1[1], box2[1]), min(box1[2], box2[2]), min(box1[3], box2[3])]
+    inter_area = max(0, inter_box[2] - inter_box[0]) * max(0, inter_box[3] - inter_box[1])
+
+    # Calculate the area of box1
+    box1_area = (box1[2] - box1[0]) * (box1[3] - box1[1])
+
+    # Calculate the proportion of box1 inside box2
+    if box1_area == 0:
+        return 0
+    proportion = inter_area / box1_area
+
+    # Ensure the proportion is at most 100%
+    return min(proportion, 1.0)
 
 def resize_boxes(boxes, original_size, target_size):
     """

@@ -7,20 +7,20 @@ import time
 import numpy as np
 import networkx as nx
 from eval import iou
-from utils import class_dict
+from utils import class_dict, proportion_inside
 import json
-import streamlit as st
+from utils import rescale_boxes as rescale 
 
-VISION_KEY = st.secrets["VISION_KEY"]
-VISION_ENDPOINT = st.secrets["VISION_ENDPOINT"]
+#VISION_KEY = '13498ba953284d6eb6b17eaa486d73b0'
+#VISION_ENDPOINT = 'https://aibpmnfrance.cognitiveservices.azure.com/'
 
-def rescale(scale, boxes):
-    for i in range(len(boxes)):
-                boxes[i] = [boxes[i][0]*scale,
-                            boxes[i][1]*scale,
-                            boxes[i][2]*scale,
-                            boxes[i][3]*scale]
-    return boxes
+
+with open("VISION_KEY.json", "r") as json_file:
+    json_data = json.load(json_file)
+
+# Step 2: Parse the JSON data (this is done by json.load automatically)
+VISION_KEY = json_data["VISION_KEY"]
+VISION_ENDPOINT = json_data["VISION_ENDPOINT"]
 
 
 def sample_ocr_image_file(image_data):
@@ -159,10 +159,15 @@ def are_close(box1, box2, threshold=50):
                 return True
     return False
 
-def find_closest_box(text_box, all_boxes, threshold):
+def find_closest_box(text_box, all_boxes, labels, threshold, iou_threshold=0.5):
     """Find the closest box to the given text box within a specified threshold."""
     min_distance = float('inf')
     closest_index = None
+
+    #check if the text is inside a sequenceFlow
+    for j in range(len(all_boxes)):
+        if proportion_inside(text_box, all_boxes[j])>iou_threshold and labels[j] == list(class_dict.values()).index('sequenceFlow'):
+            return j
     
     for i, box in enumerate(all_boxes):
         # Compute the center of both boxes
@@ -180,6 +185,7 @@ def find_closest_box(text_box, all_boxes, threshold):
     # Check if the closest box found is within the acceptable threshold
     if min_distance < threshold:
         return closest_index
+    
     return None
 
 
@@ -187,9 +193,9 @@ def is_vertical(box):
     """Determine if the text in the bounding box is vertically aligned."""
     width = box[2] - box[0]
     height = box[3] - box[1]
-    return height > width
+    return (height > 2*width)
 
-def group_texts(task_boxes, text_boxes, texts, percentage_thresh=0.8):
+def group_texts(task_boxes, text_boxes, texts, min_dist=50, iou_threshold=0.8, percentage_thresh=0.8):
     """Maps text boxes to task boxes and groups texts within each task based on proximity."""
     G = nx.Graph()
 
@@ -201,21 +207,13 @@ def group_texts(task_boxes, text_boxes, texts, percentage_thresh=0.8):
     for idx, text_box in enumerate(text_boxes):
         mapped = False
         for jdx, task_box in enumerate(task_boxes):
-            if is_inside(text_box, task_box):
+            if proportion_inside(text_box, task_box)>iou_threshold:
                 task_to_texts[jdx].append(idx)
                 text_to_task_mapped[idx] = True
                 mapped = True
                 break
         if not mapped:
             information_texts.append(idx)
-
-    min_dist = 200
-    for i in range(len(task_boxes)):
-        box1 = task_boxes[i]
-        for j in range(i + 1, len(task_boxes)):
-            box2 = task_boxes[j]
-            dist = min_distance_between_boxes(box1, box2)
-            min_dist = min(min_dist, dist)
 
     all_grouped_texts = []
     sentence_boxes = []  # Store the bounding box for each sentence
@@ -256,10 +254,10 @@ def group_texts(task_boxes, text_boxes, texts, percentage_thresh=0.8):
 
                 for idx in sorted_indices:
                     box = text_boxes[idx]
-                    min_x = min(min_x, box[0])
-                    min_y = min(min_y, box[1])
-                    max_x = max(max_x, box[2])
-                    max_y = max(max_y, box[3])
+                    min_x = min(min_x-5, box[0]-5)
+                    min_y = min(min_y-5, box[1]-5)
+                    max_x = max(max_x+5, box[2]+5)
+                    max_y = max(max_y+5, box[3]+5)
 
             all_grouped_texts.append(' '.join(grouped_texts))
             sentence_boxes.append([min_x, min_y, max_x, max_y])
@@ -313,26 +311,38 @@ def group_texts(task_boxes, text_boxes, texts, percentage_thresh=0.8):
     return all_grouped_texts, sentence_boxes, information_grouped_texts, info_sentence_boxes
 
 
-def mapping_text(full_pred, text_pred, print_sentences=False,percentage_thresh=0.8,scale=1.0, iou_threshold=0.2):
+def mapping_text(full_pred, text_pred, print_sentences=False,percentage_thresh=0.6,scale=1.0, iou_threshold=0.5):
+
+    ########### REFAIRE CETTE FONCTION ###########
+    #refaire la fonction pour qu'elle prenne en premier les elements qui sont dans les task et ensuite prendre un seuil de distance pour les autres elements
+    #ou sinon faire la distance entre les elements et non pas seulement les tasks
+
+
      # Example usage
     boxes = rescale(scale, full_pred['boxes'])
-    text_pred[0] = rescale(scale, text_pred[0])
-    task_boxes = [box for i, box in enumerate(boxes) if full_pred['labels'][i] == list(class_dict.values()).index('task')]
-    event_boxes = [box for i, box in enumerate(boxes) if full_pred['labels'][i] == list(class_dict.values()).index('event')]
-    grouped_sentences, sentence_bounding_boxes, info_texts, info_boxes = group_texts(task_boxes, text_pred[0], text_pred[1], percentage_thresh=percentage_thresh)
-    BPMN_id = set(full_pred['BPMN_id'])  # This ensures uniqueness of task names
-    text_mapping = {id: '' for id in BPMN_id}
 
     min_dist = 200
-    for i in range(len(task_boxes)):
-            box1 = task_boxes[i]
-            for j in range(i + 1, len(task_boxes)):
-                    box2 = task_boxes[j]
+    labels = full_pred['labels']
+    avoid = [list(class_dict.values()).index('pool'), list(class_dict.values()).index('lane'), list(class_dict.values()).index('sequenceFlow'), list(class_dict.values()).index('messageFlow'), list(class_dict.values()).index('dataAssociation')]
+    for i in range(len(boxes)):
+            box1 = boxes[i]
+            if labels[i] in avoid:
+                continue
+            for j in range(i + 1, len(boxes)):
+                    box2 = boxes[j]
+                    if labels[j] in avoid:
+                        continue
                     dist = min_distance_between_boxes(box1, box2)
                     min_dist = min(min_dist, dist)
-    for i in range(len(event_boxes)):
-            x1, y1, x2, y2 = event_boxes[i]
-            min_dist = min(min_dist, (x2-x1)/2)
+
+    print("Minimum distance between boxes:", min_dist)
+
+    text_pred[0] = rescale(scale, text_pred[0])
+    task_boxes = [box for i, box in enumerate(boxes) if full_pred['labels'][i] == list(class_dict.values()).index('task')]
+    grouped_sentences, sentence_bounding_boxes, info_texts, info_boxes = group_texts(task_boxes, text_pred[0], text_pred[1], min_dist=min_dist)
+    BPMN_id = set(full_pred['BPMN_id'])  # This ensures uniqueness of task names
+    text_mapping = {id: '' for id in BPMN_id}
+ 
 
     if print_sentences:
         for sentence, box in zip(grouped_sentences, sentence_bounding_boxes):
@@ -341,24 +351,38 @@ def mapping_text(full_pred, text_pred, print_sentences=False,percentage_thresh=0
         print("Information Texts:", info_texts)
         print("Information Bounding Boxes:", info_boxes)
 
-    for i in range(len(info_boxes)):
-        for j in range(len(boxes)):
-            if iou(info_boxes[i], boxes[j])>0 and full_pred['labels'][j] == list(class_dict.values()).index('pool') and is_vertical(info_boxes[i]):
-                text_mapping[full_pred['BPMN_id'][j]]=info_texts[i]
-                info_texts[i] = ''
-
-
+    # Map the grouped sentences to the corresponding task
     for i in range(len(sentence_bounding_boxes)):
         for j in range(len(boxes)):
-            if iou(sentence_bounding_boxes[i], boxes[j])>iou_threshold and full_pred['labels'][j] == list(class_dict.values()).index('task'):
+            if proportion_inside(sentence_bounding_boxes[i], boxes[j])>iou_threshold and full_pred['labels'][j] == list(class_dict.values()).index('task'):
                 text_mapping[full_pred['BPMN_id'][j]]=grouped_sentences[i]
+
+    # Map the grouped sentences to the corresponding pool
+    for i in range(len(info_boxes)):
+        vertical = is_vertical(info_boxes[i])
+        if vertical:
+            for j in range(len(boxes)):
+                if proportion_inside(info_boxes[i], boxes[j])>0 and full_pred['labels'][j] == list(class_dict.values()).index('pool'):
+                    print("oui ca marche avec ", info_texts[i], "et ", full_pred['BPMN_id'][j])
+                    bpmn_id = full_pred['BPMN_id'][j]
+                    # Append new text or create new entry if not existing
+                    if bpmn_id in text_mapping:
+                        text_mapping[bpmn_id] += " " + info_texts[i]  # Append text with a space in between
+                    else:
+                        text_mapping[bpmn_id] = info_texts[i]
+                    info_texts[i] = ''  # Clear the text to avoid re-use
+
+    # Map the grouped sentences to the corresponding object
     for i in range(len(info_boxes)):
         if is_vertical(info_boxes[i]):
             continue  # Skip if the text is vertical
         for j in range(len(boxes)):
             if info_texts[i] == '':
-                continue  # Skip if there's no text          
-            if are_close(info_boxes[i], boxes[j], threshold=2*min_dist) and full_pred['labels'][j] == list(class_dict.values()).index('event'):
+                continue  # Skip if there's no text        
+            if (proportion_inside(info_boxes[i], boxes[j])>0 or are_close(info_boxes[i], boxes[j], threshold=percentage_thresh*min_dist)) and (full_pred['labels'][j] == list(class_dict.values()).index('event') 
+                                                                             or full_pred['labels'][j] == list(class_dict.values()).index('messageEvent') 
+                                                                             or full_pred['labels'][j] == list(class_dict.values()).index('timerEvent')
+                                                                             or full_pred['labels'][j] == list(class_dict.values()).index('dataObject')) :
                 bpmn_id = full_pred['BPMN_id'][j]
                 # Append new text or create new entry if not existing
                 if bpmn_id in text_mapping:
@@ -367,11 +391,12 @@ def mapping_text(full_pred, text_pred, print_sentences=False,percentage_thresh=0
                     text_mapping[bpmn_id] = info_texts[i]
                 info_texts[i] = ''  # Clear the text to avoid re-use
 
+    # Map the grouped sentences to the corresponding flow
     for i in range(len(info_boxes)):
         if info_texts[i] == '' or is_vertical(info_boxes[i]):
             continue  # Skip if there's no text
         # Find the closest box within the defined threshold
-        closest_index = find_closest_box(info_boxes[i], boxes, threshold=4*min_dist)  # Adjust threshold as needed
+        closest_index = find_closest_box(info_boxes[i], boxes, full_pred['labels'], threshold=4*min_dist) 
         if closest_index is not None and (full_pred['labels'][closest_index] == list(class_dict.values()).index('sequenceFlow') or full_pred['labels'][closest_index] == list(class_dict.values()).index('messageFlow')):
             bpmn_id = full_pred['BPMN_id'][closest_index]
             # Append new text or create new entry if not existing
