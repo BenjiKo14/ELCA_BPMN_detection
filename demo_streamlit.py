@@ -133,7 +133,6 @@ def create_XML(full_pred, text_mapping, scale):
 
     return pretty_xml_as_string
 
-
 def display_bpmn_xml(bpmn_xml):
     html_template = f"""
     <!DOCTYPE html>
@@ -182,11 +181,15 @@ def display_bpmn_xml(bpmn_xml):
                 flex: 1;
                 position: relative;
                 background-color: #FBFBFB;
+                overflow: hidden; /* Prevent scrolling */
+                display: flex;
+                justify-content: center;
+                align-items: center;
             }}
             #canvas {{
                 height: 100%;
                 width: 100%;
-                position: absolute;
+                position: relative;
             }}
         </style>
     </head>
@@ -245,12 +248,27 @@ def display_bpmn_xml(bpmn_xml):
             document.getElementById('save-button').addEventListener('click', saveDiagram);
             document.getElementById('download-button').addEventListener('click', downloadXML);
 
+            // Ensure the canvas is focused to capture keyboard events
+            document.getElementById('canvas').focus();
+
+            // Add event listeners for keyboard shortcuts
+            document.addEventListener('keydown', function(event) {{
+                if (event.ctrlKey && event.key === 'z') {{
+                    bpmnModeler.get('commandStack').undo();
+                }} else if (event.key === 'Delete' || event.key === 'Backspace') {{
+                    bpmnModeler.get('selection').get().forEach(function(element) {{
+                        bpmnModeler.get('modeling').removeElements([element]);
+                    }});
+                }}
+            }});
+
             openDiagram(`{bpmn_xml}`);
         </script>
     </body>
     </html>
     """
     components.html(html_template, height=1000, width=1500)
+
 
 
 # Function to load the models only once and use session state to keep track of it
@@ -367,7 +385,7 @@ def perform_inference(model_object, model_arrow, image, score_threshold):
 
     # Filter and map OCR results to prediction results
     st.session_state.text_pred = filter_text(ocr_results, threshold=0.5)
-    st.session_state.text_mapping = mapping_text(st.session_state.prediction, st.session_state.text_pred, print_sentences=True, percentage_thresh=0.5)
+    st.session_state.text_mapping = mapping_text(st.session_state.prediction, st.session_state.text_pred, print_sentences=False, percentage_thresh=0.5)
                 
     # Remove the original image display
     image_placeholder.empty()
@@ -437,4 +455,5 @@ def main():
         display_bpmn_xml(st.session_state.bpmn_xml)
 
 if __name__ == "__main__":
+    print('Starting the app...')
     main()

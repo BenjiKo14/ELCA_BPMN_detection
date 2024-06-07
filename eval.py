@@ -190,8 +190,8 @@ def regroup_elements_by_pool(boxes, labels, class_dict):
 
     if not pool_indices:
         # If no pools or lanes are detected, create a single pool with all elements
-        pool_dict[0] = list(range(len(boxes)))
         labels = np.append(labels, list(class_dict.values()).index('pool'))
+        pool_dict[len(labels)-1] = list(range(len(boxes)))
     else:
         # Initialize each pool index with an empty list
         for pool_index in pool_indices:

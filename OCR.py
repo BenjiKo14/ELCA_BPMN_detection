@@ -15,6 +15,16 @@ import streamlit as st
 VISION_KEY = st.secrets["VISION_KEY"]
 VISION_ENDPOINT = st.secrets["VISION_ENDPOINT"]
 
+"""
+#If local execution
+with open("VISION_KEY.json", "r") as json_file:
+    json_data = json.load(json_file)
+
+# Step 2: Parse the JSON data (this is done by json.load automatically)
+VISION_KEY = json_data["VISION_KEY"]
+VISION_ENDPOINT = json_data["VISION_ENDPOINT"]
+"""
+
 
 def sample_ocr_image_file(image_data):
     # Set the values of your computer vision endpoint and computer vision key
@@ -328,7 +338,7 @@ def mapping_text(full_pred, text_pred, print_sentences=False,percentage_thresh=0
                     dist = min_distance_between_boxes(box1, box2)
                     min_dist = min(min_dist, dist)
 
-    print("Minimum distance between boxes:", min_dist)
+    #print("Minimum distance between boxes:", min_dist)
 
     text_pred[0] = rescale(scale, text_pred[0])
     task_boxes = [box for i, box in enumerate(boxes) if full_pred['labels'][i] == list(class_dict.values()).index('task')]
