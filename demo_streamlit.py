@@ -254,13 +254,12 @@ def display_bpmn_xml(bpmn_xml):
 
 
 # Function to load the models only once and use session state to keep track of it
-@st.cache_resource
+#@st.cache_resource
 def load_model():
 
     """Load the model only once, and use session state to keep track of it."""
     if 'model_loaded' not in st.session_state:
         st.session_state.model_loaded = False
-        st.session_state.prediction_up = False
 
     with st.spinner('Loading model...'):
         if not st.session_state.model_loaded:        
@@ -387,7 +386,9 @@ def main():
 
     # Load the model using the defined function
     load_model()
-    prediction_up = st.session_state.prediction_up
+    if 'model_loaded' not in st.session_state:
+        st.session_state.prediction_up = False
+    #prediction_up = st.session_state.prediction_up
     model_arrow = st.session_state.model_arrow
     model_object = st.session_state.model_object
 
@@ -429,9 +430,9 @@ def main():
     if 'prediction' in st.session_state and uploaded_file is not None:
         display_options(st.session_state.crop_image, score_threshold)
 
-        if st.session_state.prediction_up==True:
-            st.session_state.bpmn_xml = create_XML(st.session_state.prediction.copy(), st.session_state.text_mapping, st.session_state.scale)
-            st.session_state.prediction_up = False
+        #if st.session_state.prediction_up==True:
+        st.session_state.bpmn_xml = create_XML(st.session_state.prediction.copy(), st.session_state.text_mapping, st.session_state.scale)
+        st.session_state.prediction_up = False
     
         display_bpmn_xml(st.session_state.bpmn_xml)
 
