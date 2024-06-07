@@ -10,17 +10,10 @@ from eval import iou
 from utils import class_dict, proportion_inside
 import json
 from utils import rescale_boxes as rescale 
+import streamlit as st
 
-#VISION_KEY = '13498ba953284d6eb6b17eaa486d73b0'
-#VISION_ENDPOINT = 'https://aibpmnfrance.cognitiveservices.azure.com/'
-
-
-with open("VISION_KEY.json", "r") as json_file:
-    json_data = json.load(json_file)
-
-# Step 2: Parse the JSON data (this is done by json.load automatically)
-VISION_KEY = json_data["VISION_KEY"]
-VISION_ENDPOINT = json_data["VISION_ENDPOINT"]
+VISION_KEY = st.secrets["VISION_KEY"]
+VISION_ENDPOINT = st.secrets["VISION_ENDPOINT"]
 
 
 def sample_ocr_image_file(image_data):
