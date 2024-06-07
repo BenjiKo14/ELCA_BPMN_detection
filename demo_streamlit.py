@@ -151,6 +151,7 @@ def display_bpmn_xml(bpmn_xml):
                 font-family: Arial, sans-serif;
                 display: flex;
                 flex-direction: column;
+                overflow: hidden;
             }}
             #button-container {{
                 padding: 10px;
@@ -179,6 +180,7 @@ def display_bpmn_xml(bpmn_xml):
             #canvas-container {{
                 flex: 1;
                 position: relative;
+                background-color: #D3D3D3;
             }}
             #canvas {{
                 height: 100%;
@@ -260,35 +262,36 @@ def load_model():
         st.session_state.model_loaded = False
         st.session_state.prediction_up = False
 
-    if not st.session_state.model_loaded:        
-        model_object = get_faster_rcnn_model(len(object_dict))
-        model_arrow = get_arrow_model(len(arrow_dict),2)
+    with st.spinner('Loading model...'):
+        if not st.session_state.model_loaded:        
+            model_object = get_faster_rcnn_model(len(object_dict))
+            model_arrow = get_arrow_model(len(arrow_dict),2)
 
-        url_arrow = 'https://drive.google.com/uc?id=1xwfvo7BgDWz-1jAiJC1DCF0Wp8YlFNWt'
-        url_object = 'https://drive.google.com/uc?id=1GiM8xOXG6M6r8J9HTOeMJz9NKu7iumZi'
+            url_arrow = 'https://drive.google.com/uc?id=1xwfvo7BgDWz-1jAiJC1DCF0Wp8YlFNWt'
+            url_object = 'https://drive.google.com/uc?id=1GiM8xOXG6M6r8J9HTOeMJz9NKu7iumZi'
 
-        # Define paths to save models
-        output_arrow = 'model_arrow.pth'
-        output_object = 'model_object.pth'
+            # Define paths to save models
+            output_arrow = 'model_arrow.pth'
+            output_object = 'model_object.pth'
 
-        # Download models using gdown
-        if not Path(output_arrow).exists():
             # Download models using gdown
-            gdown.download(url_arrow, output_arrow, quiet=False)
-        else:
-            print('Model arrow downloaded from local')
-        if not Path(output_object).exists():
-            gdown.download(url_object, output_object, quiet=False)
-        else:
-            print('Model object downloaded from local')
+            if not Path(output_arrow).exists():
+                # Download models using gdown
+                gdown.download(url_arrow, output_arrow, quiet=False)
+            else:
+                print('Model arrow downloaded from local')
+            if not Path(output_object).exists():
+                gdown.download(url_object, output_object, quiet=False)
+            else:
+                print('Model object downloaded from local')
 
-        # Load models
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        model_arrow.load_state_dict(torch.load(output_arrow, map_location=device))
-        model_object.load_state_dict(torch.load(output_object, map_location=device))
-        st.session_state.model_loaded = True
-        st.session_state.model_arrow = model_arrow
-        st.session_state.model_object = model_object
+            # Load models
+            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            model_arrow.load_state_dict(torch.load(output_arrow, map_location=device))
+            model_object.load_state_dict(torch.load(output_object, map_location=device))
+            st.session_state.model_loaded = True
+            st.session_state.model_arrow = model_arrow
+            st.session_state.model_object = model_object
 
 # Function to prepare the image for processing
 def prepare_image(image, pad=True, new_size=(1333, 1333)):
