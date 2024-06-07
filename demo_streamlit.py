@@ -4,6 +4,8 @@ from PIL import Image
 import torch
 from torchvision.transforms import functional as F
 from PIL import Image, ImageEnhance
+from htlm_webpage import display_bpmn_xml
+import gc
 
 from OCR import text_prediction, filter_text, mapping_text, rescale
 from train import prepare_model
@@ -133,182 +135,38 @@ def create_XML(full_pred, text_mapping, scale):
 
     return pretty_xml_as_string
 
-def display_bpmn_xml(bpmn_xml):
-    html_template = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="UTF-8">
-        <title>BPMN Modeler</title>
-        <link rel="stylesheet" href="https://unpkg.com/bpmn-js/dist/assets/diagram-js.css">
-        <link rel="stylesheet" href="https://unpkg.com/bpmn-js/dist/assets/bpmn-font/css/bpmn-embedded.css">
-        <script src="https://unpkg.com/bpmn-js/dist/bpmn-modeler.development.js"></script>
-        <style>
-            html, body {{
-                height: 100%;
-                padding: 0;
-                margin: 0;
-                font-family: Arial, sans-serif;
-                display: flex;
-                flex-direction: column;
-                overflow: hidden;
-            }}
-            #button-container {{
-                padding: 10px;
-                background-color: #ffffff;
-                border-bottom: 1px solid #ddd;
-                display: flex;
-                justify-content: flex-start;
-                gap: 10px;
-            }}
-            #save-button, #download-button {{
-                background-color: #4CAF50;
-                color: white;
-                border: none;
-                padding: 10px 20px;
-                text-align: center;
-                text-decoration: none;
-                display: inline-block;
-                font-size: 16px;
-                margin: 4px 2px;
-                cursor: pointer;
-                border-radius: 8px;
-            }}
-            #download-button {{
-                background-color: #008CBA;
-            }}
-            #canvas-container {{
-                flex: 1;
-                position: relative;
-                background-color: #FBFBFB;
-                overflow: hidden; /* Prevent scrolling */
-                display: flex;
-                justify-content: center;
-                align-items: center;
-            }}
-            #canvas {{
-                height: 100%;
-                width: 100%;
-                position: relative;
-            }}
-        </style>
-    </head>
-    <body>
-        <div id="button-container">
-            <button id="save-button">Save BPMN</button>
-            <button id="download-button">Download XML</button>
-        </div>
-        <div id="canvas-container">
-            <div id="canvas"></div>
-        </div>
-        <script>
-            var bpmnModeler = new BpmnJS({{
-                container: '#canvas'
-            }});
-
-            async function openDiagram(bpmnXML) {{
-                try {{
-                    await bpmnModeler.importXML(bpmnXML);
-                    bpmnModeler.get('canvas').zoom('fit-viewport');
-                    bpmnModeler.get('canvas').zoom(0.8); // Adjust this value for zooming out
-                }} catch (err) {{
-                    console.error('Error rendering BPMN diagram', err);
-                }}
-            }}
-
-            async function saveDiagram() {{
-                try {{
-                    const result = await bpmnModeler.saveXML({{ format: true }});
-                    const xml = result.xml;
-                    const blob = new Blob([xml], {{ type: 'text/xml' }});
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = 'diagram.bpmn';
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                }} catch (err) {{
-                    console.error('Error saving BPMN diagram', err);
-                }}
-            }}
-
-            async function downloadXML() {{
-                const xml = `{bpmn_xml}`;
-                const blob = new Blob([xml], {{ type: 'text/xml' }});
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = 'diagram.xml';
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-            }}
-
-            document.getElementById('save-button').addEventListener('click', saveDiagram);
-            document.getElementById('download-button').addEventListener('click', downloadXML);
-
-            // Ensure the canvas is focused to capture keyboard events
-            document.getElementById('canvas').focus();
-
-            // Add event listeners for keyboard shortcuts
-            document.addEventListener('keydown', function(event) {{
-                if (event.ctrlKey && event.key === 'z') {{
-                    bpmnModeler.get('commandStack').undo();
-                }} else if (event.key === 'Delete' || event.key === 'Backspace') {{
-                    bpmnModeler.get('selection').get().forEach(function(element) {{
-                        bpmnModeler.get('modeling').removeElements([element]);
-                    }});
-                }}
-            }});
-
-            openDiagram(`{bpmn_xml}`);
-        </script>
-    </body>
-    </html>
-    """
-    components.html(html_template, height=1000, width=1500)
-
-
 
 # Function to load the models only once and use session state to keep track of it
-#@st.cache_resource
-def load_model():
+def load_models():
+    with st.spinner('Loading model...'):     
+        model_object = get_faster_rcnn_model(len(object_dict))
+        model_arrow = get_arrow_model(len(arrow_dict),2)
 
-    """Load the model only once, and use session state to keep track of it."""
-    if 'model_loaded' not in st.session_state:
-        st.session_state.model_loaded = False
+        url_arrow = 'https://drive.google.com/uc?id=1xwfvo7BgDWz-1jAiJC1DCF0Wp8YlFNWt'
+        url_object = 'https://drive.google.com/uc?id=1GiM8xOXG6M6r8J9HTOeMJz9NKu7iumZi'
 
-    with st.spinner('Loading model...'):
-        if not st.session_state.model_loaded:        
-            model_object = get_faster_rcnn_model(len(object_dict))
-            model_arrow = get_arrow_model(len(arrow_dict),2)
+        # Define paths to save models
+        output_arrow = 'model_arrow.pth'
+        output_object = 'model_object.pth'
 
-            url_arrow = 'https://drive.google.com/uc?id=1xwfvo7BgDWz-1jAiJC1DCF0Wp8YlFNWt'
-            url_object = 'https://drive.google.com/uc?id=1GiM8xOXG6M6r8J9HTOeMJz9NKu7iumZi'
-
-            # Define paths to save models
-            output_arrow = 'model_arrow.pth'
-            output_object = 'model_object.pth'
-
+        # Download models using gdown
+        if not Path(output_arrow).exists():
             # Download models using gdown
-            if not Path(output_arrow).exists():
-                # Download models using gdown
-                gdown.download(url_arrow, output_arrow, quiet=False)
-            else:
-                print('Model arrow downloaded from local')
-            if not Path(output_object).exists():
-                gdown.download(url_object, output_object, quiet=False)
-            else:
-                print('Model object downloaded from local')
+            gdown.download(url_arrow, output_arrow, quiet=False)
+        else:
+            print('Model arrow downloaded from local')
+        if not Path(output_object).exists():
+            gdown.download(url_object, output_object, quiet=False)
+        else:
+            print('Model object downloaded from local')
 
-            # Load models
-            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-            model_arrow.load_state_dict(torch.load(output_arrow, map_location=device))
-            model_object.load_state_dict(torch.load(output_object, map_location=device))
-            st.session_state.model_loaded = True
-            st.session_state.model_arrow = model_arrow
-            st.session_state.model_object = model_object
+        # Load models
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        model_arrow.load_state_dict(torch.load(output_arrow, map_location=device))
+        model_object.load_state_dict(torch.load(output_object, map_location=device))
+        st.session_state.model_loaded = True
+        st.session_state.model_arrow = model_arrow
+        st.session_state.model_object = model_object
 
 # Function to prepare the image for processing
 def prepare_image(image, pad=True, new_size=(1333, 1333)):
@@ -390,6 +248,9 @@ def perform_inference(model_object, model_arrow, image, score_threshold):
     # Remove the original image display
     image_placeholder.empty()
 
+    # Force garbage collection
+    gc.collect()
+
 @st.cache_data
 def get_image(uploaded_file):
     return Image.open(uploaded_file).convert('RGB')
@@ -402,8 +263,10 @@ def main():
     if 'pool_bboxes' not in st.session_state:
         st.session_state.pool_bboxes = []
 
-    # Load the model using the defined function
-    load_model()
+    # Load the models using the defined function
+    if 'model_object' not in st.session_state or 'model_arrow' not in st.session_state:
+        load_models()
+
     if 'model_loaded' not in st.session_state:
         st.session_state.prediction_up = False
     #prediction_up = st.session_state.prediction_up
@@ -453,6 +316,9 @@ def main():
         st.session_state.prediction_up = False
     
         display_bpmn_xml(st.session_state.bpmn_xml)
+
+        # Force garbage collection after display
+        gc.collect()
 
 if __name__ == "__main__":
     print('Starting the app...')
