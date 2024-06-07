@@ -133,6 +133,7 @@ def create_XML(full_pred, text_mapping, scale):
 
     return pretty_xml_as_string
 
+
 def display_bpmn_xml(bpmn_xml):
     html_template = f"""
     <!DOCTYPE html>
@@ -180,7 +181,7 @@ def display_bpmn_xml(bpmn_xml):
             #canvas-container {{
                 flex: 1;
                 position: relative;
-                background-color: #D3D3D3;
+                background-color: #FBFBFB;
             }}
             #canvas {{
                 height: 100%;
@@ -252,9 +253,8 @@ def display_bpmn_xml(bpmn_xml):
     components.html(html_template, height=1000, width=1500)
 
 
-
 # Function to load the models only once and use session state to keep track of it
-#@st.cache_resource
+@st.cache_resource
 def load_model():
 
     """Load the model only once, and use session state to keep track of it."""
