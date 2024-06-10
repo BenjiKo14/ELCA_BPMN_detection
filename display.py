@@ -140,23 +140,23 @@ def draw_stream(image,
 
     # Draw links between objects
     if draw_links==True and prediction is not None:
-        for arrow in prediction['links']:
-            for i, (start_idx, end_idx) in enumerate(prediction['links'][arrow]):
-                if start_idx is None or end_idx is None:
-                    continue
-                start_box = prediction['boxes'][start_idx]
-                start_box = resize_boxes(np.array([start_box]), (new_scaled_size[1], new_scaled_size[0]), (image_copy.shape[1],image_copy.shape[0]))[0]
-                end_box = prediction['boxes'][end_idx]
-                end_box = resize_boxes(np.array([end_box]), (new_scaled_size[1], new_scaled_size[0]), (image_copy.shape[1],image_copy.shape[0]))[0]
-                current_box = prediction['boxes'][i]
-                current_box = resize_boxes(np.array([current_box]), (new_scaled_size[1], new_scaled_size[0]), (image_copy.shape[1],image_copy.shape[0]))[0]
-                # Calculate the center of each bounding box
-                start_center = ((start_box[0] + start_box[2]) // 2, (start_box[1] + start_box[3]) // 2)
-                end_center = ((end_box[0] + end_box[2]) // 2, (end_box[1] + end_box[3]) // 2)
-                current_center = ((current_box[0] + current_box[2]) // 2, (current_box[1] + current_box[3]) // 2)
-                # Draw a line between the centers of the connected objects
-                cv2.line(image_copy, (int(start_center[0]), int(start_center[1])), (int(current_center[0]), int(current_center[1])), (0, 0, 255), int(2*scale))
-                cv2.line(image_copy, (int(current_center[0]), int(current_center[1])), (int(end_center[0]), int(end_center[1])), (255, 0, 0), int(2*scale))
+        for i, (start_idx, end_idx) in enumerate(prediction['links']):
+            if start_idx is None or end_idx is None:
+                continue
+            start_box = prediction['boxes'][start_idx]
+            start_box = resize_boxes(np.array([start_box]), (new_scaled_size[1], new_scaled_size[0]), (image_copy.shape[1],image_copy.shape[0]))[0]
+            end_box = prediction['boxes'][end_idx]
+            end_box = resize_boxes(np.array([end_box]), (new_scaled_size[1], new_scaled_size[0]), (image_copy.shape[1],image_copy.shape[0]))[0]
+            current_box = prediction['boxes'][i]
+            current_box = resize_boxes(np.array([current_box]), (new_scaled_size[1], new_scaled_size[0]), (image_copy.shape[1],image_copy.shape[0]))[0]
+            # Calculate the center of each bounding box
+            start_center = ((start_box[0] + start_box[2]) // 2, (start_box[1] + start_box[3]) // 2)
+            end_center = ((end_box[0] + end_box[2]) // 2, (end_box[1] + end_box[3]) // 2)
+            current_center = ((current_box[0] + current_box[2]) // 2, (current_box[1] + current_box[3]) // 2)
+            # Draw a line between the centers of the connected objects
+            cv2.line(image_copy, (int(start_center[0]), int(start_center[1])), (int(current_center[0]), int(current_center[1])), (0, 0, 255), int(2*scale))
+            cv2.line(image_copy, (int(current_center[0]), int(current_center[1])), (int(end_center[0]), int(end_center[1])), (255, 0, 0), int(2*scale))
+
 
     if draw_grouped_text and prediction is not None:
         task_boxes = task_boxes = [box for i, box in enumerate(prediction['boxes']) if prediction['labels'][i] == list(class_dict.values()).index('task')]
