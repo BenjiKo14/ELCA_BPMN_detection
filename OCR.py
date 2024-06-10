@@ -362,11 +362,10 @@ def mapping_text(full_pred, text_pred, print_sentences=False,percentage_thresh=0
 
     # Map the grouped sentences to the corresponding pool
     for i in range(len(info_boxes)):
-        vertical = is_vertical(info_boxes[i])
-        if vertical:
+        if is_vertical(info_boxes[i]):
             for j in range(len(boxes)):
                 if proportion_inside(info_boxes[i], boxes[j])>0 and full_pred['labels'][j] == list(class_dict.values()).index('pool'):
-                    print("oui ca marche avec ", info_texts[i], "et ", full_pred['BPMN_id'][j])
+                    print("Text:", info_texts[i], "associate with ", full_pred['BPMN_id'][j])
                     bpmn_id = full_pred['BPMN_id'][j]
                     # Append new text or create new entry if not existing
                     if bpmn_id in text_mapping:

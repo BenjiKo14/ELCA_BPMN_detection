@@ -63,8 +63,9 @@ def display_bpmn_xml(bpmn_xml):
     </head>
     <body>
         <div id="button-container">
-            <button id="save-button">Save BPMN</button>
-            <button id="download-button">Download XML</button>
+            <button id="save-button">Save as BPMN</button>
+            <button id="download-button">Save as XML</button>
+            <button id="download-button">Save as Vizi</button>
         </div>
         <div id="canvas-container">
             <div id="canvas"></div>
