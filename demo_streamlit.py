@@ -258,6 +258,7 @@ def get_image(uploaded_file):
 def main():
     st.set_page_config(layout="wide")
     st.title("BPMN model recognition demo")
+    
 
     # Initialize the session state for storing pool bounding boxes
     if 'pool_bboxes' not in st.session_state:
@@ -267,9 +268,6 @@ def main():
     if 'model_object' not in st.session_state or 'model_arrow' not in st.session_state:
         load_models()
 
-    if 'model_loaded' not in st.session_state:
-        st.session_state.prediction_up = False
-    #prediction_up = st.session_state.prediction_up
     model_arrow = st.session_state.model_arrow
     model_object = st.session_state.model_object
 
@@ -305,7 +303,8 @@ def main():
                     perform_inference(model_object, model_arrow, st.session_state.crop_image, score_threshold)
                     st.session_state.prediction = modif_box_pos(st.session_state.prediction, object_dict)                    
                     st.success('Detection completed!')
-                    st.session_state.prediction_up = True
+                    print('Detection completed!')
+
 
     # If the prediction has been made and the user has uploaded an image, display the options for the user to annotate the image
     if 'prediction' in st.session_state and uploaded_file is not None:
@@ -313,7 +312,6 @@ def main():
 
         #if st.session_state.prediction_up==True:
         st.session_state.bpmn_xml = create_XML(st.session_state.prediction.copy(), st.session_state.text_mapping, st.session_state.scale)
-        st.session_state.prediction_up = False
     
         display_bpmn_xml(st.session_state.bpmn_xml)
 
