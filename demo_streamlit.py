@@ -6,6 +6,7 @@ from torchvision.transforms import functional as F
 from PIL import Image, ImageEnhance
 from htlm_webpage import display_bpmn_xml
 import gc
+import psutil
 
 from OCR import text_prediction, filter_text, mapping_text, rescale
 from train import prepare_model
@@ -24,6 +25,15 @@ from streamlit_drawable_canvas import st_canvas
 from utils import find_closest_object
 from train import get_faster_rcnn_model, get_arrow_model
 import gdown
+
+def get_memory_usage():
+    process = psutil.Process()
+    mem_info = process.memory_info()
+    return mem_info.rss / (1024 ** 2)  # Return memory usage in MB
+
+def clear_memory():
+    st.session_state.clear()
+    gc.collect()
 
 # Function to read XML content from a file
 def read_xml_file(filepath):
@@ -51,23 +61,24 @@ def create_XML(full_pred, text_mapping, scale):
     }
     
     size_elements = {
-        'start': (36, 36),
-        'task': (100, 80),
-        'message': (36, 36),
-        'messageEvent': (36, 36),
-        'end': (36, 36),
-        'exclusiveGateway': (50, 50),
-        'event': (36, 36),
-        'parallelGateway': (50, 50),
-        'sequenceFlow': (150, 10),
-        'pool': (250, 100),
-        'lane': (200, 100),
-        'dataObject': (40, 60),
-        'dataStore': (60, 60),
-        'subProcess': (120, 90),
-        'eventBasedGateway': (50, 50),
-        'timerEvent': (40, 40),
+        'start': (54, 54),
+        'task': (150, 120),
+        'message': (54, 54),
+        'messageEvent': (54, 54),
+        'end': (54, 54),
+        'exclusiveGateway': (75, 75),
+        'event': (54, 54),
+        'parallelGateway': (75, 75),
+        'sequenceFlow': (225, 15),
+        'pool': (375, 150),
+        'lane': (300, 150),
+        'dataObject': (60, 90),
+        'dataStore': (90, 90),
+        'subProcess': (180, 135),
+        'eventBasedGateway': (75, 75),
+        'timerEvent': (60, 60),
     }
+
 
     definitions = ET.Element('bpmn:definitions', {
         'xmlns:xsi': namespaces['xsi'],
@@ -259,6 +270,9 @@ def main():
     st.set_page_config(layout="wide")
     st.title("BPMN model recognition demo")
     
+     # Display current memory usage
+    memory_usage = get_memory_usage()
+    print(f"Current memory usage: {memory_usage:.2f} MB")
 
     # Initialize the session state for storing pool bounding boxes
     if 'pool_bboxes' not in st.session_state:
@@ -266,6 +280,7 @@ def main():
 
     # Load the models using the defined function
     if 'model_object' not in st.session_state or 'model_arrow' not in st.session_state:
+        clear_memory()
         load_models()
 
     model_arrow = st.session_state.model_arrow
@@ -302,12 +317,13 @@ def main():
                 with st.spinner('Processing...'):
                     perform_inference(model_object, model_arrow, st.session_state.crop_image, score_threshold)
                     st.session_state.prediction = modif_box_pos(st.session_state.prediction, object_dict)                    
-                    st.success('Detection completed!')
+            
                     print('Detection completed!')
 
 
     # If the prediction has been made and the user has uploaded an image, display the options for the user to annotate the image
     if 'prediction' in st.session_state and uploaded_file is not None:
+        st.success('Detection completed!')
         display_options(st.session_state.crop_image, score_threshold)
 
         #if st.session_state.prediction_up==True:
