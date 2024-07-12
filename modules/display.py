@@ -1,9 +1,9 @@
-from utils import draw_annotations, create_loader, class_dict, resize_boxes, resize_keypoints, find_other_keypoint
+from modules.utils import draw_annotations, create_loader, class_dict, resize_boxes, resize_keypoints, find_other_keypoint
 import cv2
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
-from OCR import group_texts
+from modules.OCR import group_texts
 
 
 
@@ -25,7 +25,7 @@ def draw_stream(image,
                 write_idx=False,
                 keypoints_correction=False,
                 new_size=(1333, 1333),
-                only_print=None,
+                only_show=None,
                 axis=False,
                 return_image=False,
                 resize=False):
@@ -48,14 +48,23 @@ def draw_stream(image,
     - write_score (bool): Flag to write scores near the annotations.
     - write_text (bool): Flag to write OCR recognized text.
     - score_threshold (float): Threshold for scores above which annotations will be drawn.
-    - only_print (str): Specific class name to filter annotations by.
+    - only_show (str): Specific class name to filter annotations by.
     - resize (bool): Whether to resize annotations to fit the image size.
     """
+
+    #delete the global pool if it is the only one to show
+    """if len(prediction['pool_dict'])==1 and prediction['labels'][-1]==6:
+        pool_index = list(prediction['pool_dict'])[0]
+        if len(prediction['pool_dict'][pool_index])==(len(prediction['boxes'])-1):
+            prediction['boxes'] = prediction['boxes'][:-1]
+            prediction['labels'] = prediction['labels'][:-1]
+            prediction['scores'] = prediction['scores'][:-1]
+            prediction['keypoints'] = prediction['keypoints'][:-1]
+            prediction['links'] = prediction['links'][:-1]"""
 
     # Convert image to RGB (if not already in that format)
     if prediction is None:
         image = image.squeeze(0).permute(1, 2, 0).cpu().numpy()
-
     
     image_copy = image.copy()
     scale = max(image.shape[0], image.shape[1]) / 1000
@@ -66,6 +75,9 @@ def draw_stream(image,
     new_scaled_size = (int(original_size[0] * scale_), int(original_size[1] * scale_))
 
     for i in range(len(prediction['boxes'])):
+        if only_show is not None and only_show != 'all':
+                if prediction['labels'][i] != list(class_dict.values()).index(only_show):
+                    continue
         box = prediction['boxes'][i]
         x1, y1, x2, y2 = box
         if resize:
@@ -74,8 +86,8 @@ def draw_stream(image,
         if score < score_threshold:
             continue
         if draw_boxes:
-            if only_print is not None and only_print != 'all':
-                if prediction['labels'][i] != list(class_dict.values()).index(only_print):
+            #dont show the lanes
+            if prediction['labels'][i] == list(class_dict.values()).index('lane'):
                     continue
             cv2.rectangle(image_copy, (int(x1), int(y1)), (int(x2), int(y2)), (0, 0, 0), int(2*scale))
         if write_score:
@@ -91,6 +103,8 @@ def draw_stream(image,
         # Draw keypoints if available
         if draw_keypoints and 'keypoints' in prediction:
             for i in range(len(prediction['keypoints'])):
+                if i >= len(prediction['keypoints']):
+                    continue
                 kp = prediction['keypoints'][i]
                 for j in range(kp.shape[0]):
                     if prediction['labels'][i] != list(class_dict.values()).index('sequenceFlow') and prediction['labels'][i] != list(class_dict.values()).index('messageFlow') and prediction['labels'][i] != list(class_dict.values()).index('dataAssociation'):

@@ -11,12 +11,7 @@ from torch.utils.data.dataloader import default_collate
 import cv2
 import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader, Subset, ConcatDataset
-from tqdm import tqdm
-from torch.optim import SGD
-import time
-from torch.optim import AdamW
-import copy
-from torchvision import transforms
+import streamlit as st
 
 
 object_dict = {
@@ -60,6 +55,13 @@ class_dict = {
     14: 'dataAssociation', 
     15: 'messageFlow',
 }
+
+
+def is_vertical(box):
+    """Determine if the text in the bounding box is vertically aligned."""
+    width = box[2] - box[0]
+    height = box[3] - box[1]
+    return (height > 2*width)
 
 def rescale_boxes(scale, boxes):
     for i in range(len(boxes)):
@@ -409,7 +411,7 @@ def rotate_vertical(image, target):
     return image, target
 
 class BPMN_Dataset(Dataset):
-    def __init__(self, annotations, transform=None, crop_transform=None, crop_prob=0.3, rotate_90_proba=0.2, flip_transform=None, rotate_transform=None, new_size=(1333,800),keep_ratio=False,resize=True, model_type='object', rotate_vertical=False):
+    def __init__(self, annotations, transform=None, crop_transform=None, crop_prob=0.3, rotate_90_proba=0.2, flip_transform=None, rotate_transform=None, new_size=(1333,800),keep_ratio=0.1,resize=True, model_type='object'):
         self.annotations = annotations
         print(f"Loaded {len(self.annotations)} annotations.")
         self.transform = transform
@@ -418,7 +420,6 @@ class BPMN_Dataset(Dataset):
         self.flip_transform = flip_transform
         self.rotate_transform = rotate_transform
         self.resize = resize
-        self.rotate_vertical = rotate_vertical
         self.new_size = new_size
         self.keep_ratio = keep_ratio
         self.model_type = model_type
@@ -492,11 +493,11 @@ class BPMN_Dataset(Dataset):
             image, target = self.crop_transform(image, target)
             
         # Rotate vertical image
-        if self.rotate_vertical and random.random() < self.rotate_90_proba:
+        if random.random() < self.rotate_90_proba:
             image, target = rotate_vertical(image, target)
 
         if self.resize:
-            if self.keep_ratio:
+            if random.random() < self.keep_ratio:
                 original_size = image.size
                 # Calculate scale to fit the new size while maintaining aspect ratio
                 scale = min(self.new_size[0] / original_size[0], self.new_size[1] / original_size[1])
@@ -555,7 +556,7 @@ def collate_fn(batch):
 def create_loader(new_size,transformation, annotations1, annotations2=None, 
                   batch_size=4, crop_prob=0.2, crop_fraction=0.7, min_objects=3, 
                   h_flip_prob=0.3, v_flip_prob=0.3, max_rotate_deg=20, rotate_90_proba=0.2, rotate_proba=0.3, 
-                  seed=42, resize=True, rotate_vertical=False, keep_ratio=False, model_type = 'object'):
+                  seed=42, resize=True, keep_ratio=0.1, model_type = 'object'):
     """
     Creates a DataLoader for BPMN datasets with optional transformations and concatenation of two datasets.
 
@@ -590,7 +591,6 @@ def create_loader(new_size,transformation, annotations1, annotations2=None,
         rotate_90_proba=rotate_90_proba,
         flip_transform=custom_flip_transform,
         rotate_transform=custom_rotate_transform,
-        rotate_vertical=rotate_vertical,
         new_size=new_size,
         keep_ratio=keep_ratio,
         model_type=model_type,
@@ -606,7 +606,6 @@ def create_loader(new_size,transformation, annotations1, annotations2=None,
             crop_prob=crop_prob,
             rotate_90_proba=rotate_90_proba,
             flip_transform=custom_flip_transform,
-            rotate_vertical=rotate_vertical,
             new_size=new_size,
             keep_ratio=keep_ratio,
             model_type=model_type,
@@ -905,8 +904,9 @@ def find_closest_object(keypoint, boxes, labels):
     Returns:
     - int or None: The index of the closest object to the keypoint, or None if no object is found.
     """
-    min_distance = float('inf')
     closest_object_idx = None
+    best_point = None  
+    min_distance = float('inf')
     # Iterate over each bounding box
     for i, box in enumerate(boxes):
         if labels[i] in [list(class_dict.values()).index('sequenceFlow'),
@@ -923,14 +923,22 @@ def find_closest_object(keypoint, boxes, labels):
         right = (x2, (y1+y2)/2)
         points = [left, top , right, bottom]
 
+        pos_dict = {0:'left', 1:'top', 2:'right', 3:'bottom'}
+
         # Calculate the distance between the keypoint and the center of the bounding box
-        for point in points:
+        for pos, (point) in enumerate(points):
             distance = np.linalg.norm(keypoint[:2] - point)
             # Update the closest object index if this object is closer
             if distance < min_distance:
                 min_distance = distance
                 closest_object_idx = i
-                best_point = point
+                best_point = pos_dict[pos]
 
     return closest_object_idx, best_point
 
+
+def error(text='There is an error in the detection'):
+    st.error(text, icon="🚨")
+
+def warning(text='Some element are maybe not detected, verify the results, try to modify the parameters or try to add it in the method and style step.'):
+    st.warning(text, icon="⚠️")

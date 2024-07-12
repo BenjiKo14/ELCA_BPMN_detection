@@ -6,25 +6,21 @@ from azure.core.credentials import AzureKeyCredential
 import time
 import numpy as np
 import networkx as nx
-from eval import iou
-from utils import class_dict, proportion_inside
+from modules.utils import class_dict, proportion_inside
 import json
-from utils import rescale_boxes as rescale 
+from modules.utils import rescale_boxes as rescale 
 import streamlit as st
+from modules.utils import is_vertical
 
-VISION_KEY = st.secrets["VISION_KEY"]
-VISION_ENDPOINT = st.secrets["VISION_ENDPOINT"]
+#VISION_KEY = os.getenv("VISION_KEY")
+#VISION_ENDPOINT = os.getenv("VISION_ENDPOINT")
 
-"""
 #If local execution
 with open("VISION_KEY.json", "r") as json_file:
     json_data = json.load(json_file)
-
-# Step 2: Parse the JSON data (this is done by json.load automatically)
+    
 VISION_KEY = json_data["VISION_KEY"]
 VISION_ENDPOINT = json_data["VISION_ENDPOINT"]
-"""
-
 
 def sample_ocr_image_file(image_data):
     # Set the values of your computer vision endpoint and computer vision key
@@ -63,7 +59,7 @@ def text_prediction(image):
     return ocr_result
 
 def filter_text(ocr_result, threshold=0.5):
-    words_to_cancel = {"+",".",",","#","@","!","?","(",")","[","]","{","}","<",">","/","\\","|","-","_","=","&","^","%","$","£","€","¥","¢","¤","§","©","®","™","°","±","×","÷","¶","∆","∏","∑","∞","√","∫","≈","≠","≤","≥","≡","∼"}
+    words_to_cancel = {"-","--","---","+",".",",","#","@","!","?","(",")","[","]","{","}","<",">","/","\\","|","-","_","=","&","^","%","$","£","€","¥","¢","¤","§","©","®","™","°","±","×","÷","¶","∆","∏","∑","∞","√","∫","≈","≠","≤","≥","≡","∼"}
     # Add every other one-letter word to the list of words to cancel, except 'I' and 'a'
     for letter in "bcdefghjklmnopqrstuvwxyz1234567890":  # All lowercase letters except 'a'
         words_to_cancel.add(letter)
@@ -192,11 +188,6 @@ def find_closest_box(text_box, all_boxes, labels, threshold, iou_threshold=0.5):
     return None
 
 
-def is_vertical(box):
-    """Determine if the text in the bounding box is vertically aligned."""
-    width = box[2] - box[0]
-    height = box[3] - box[1]
-    return (height > 2*width)
 
 def group_texts(task_boxes, text_boxes, texts, min_dist=50, iou_threshold=0.8, percentage_thresh=0.8):
     """Maps text boxes to task boxes and groups texts within each task based on proximity."""
@@ -361,6 +352,18 @@ def mapping_text(full_pred, text_pred, print_sentences=False,percentage_thresh=0
                 text_mapping[full_pred['BPMN_id'][j]]=grouped_sentences[i]
 
     # Map the grouped sentences to the corresponding pool
+    for key, elements in full_pred['pool_dict'].items():
+        if len(elements) > 0:
+            continue
+        else:
+            for i in range(len(info_boxes)):
+                #find the position of the key in BPMN_id
+                position = list(full_pred['BPMN_id']).index(key)
+                if proportion_inside(info_boxes[i], boxes[position])>iou_threshold:
+                    text_mapping[key] = info_texts[i]
+                    info_texts[i] = ''  # Clear the text to avoid re-use
+
+
     for i in range(len(info_boxes)):
         if is_vertical(info_boxes[i]):
             for j in range(len(boxes)):

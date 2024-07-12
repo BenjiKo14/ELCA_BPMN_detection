@@ -1,21 +1,18 @@
 import copy
-import cv2
 import numpy as np
-import random
 import time
 import torch
 import torchvision.transforms.functional as F
 import matplotlib.pyplot as plt
 
-from eval import main_evaluation
+from modules.eval import main_evaluation
 from torch.optim import SGD, AdamW
-from torch.utils.data import DataLoader, Dataset, Subset, ConcatDataset
-from torch.utils.data.dataloader import default_collate
-from torchvision.models.detection import keypointrcnn_resnet50_fpn, KeypointRCNN_ResNet50_FPN_Weights
+from torchvision.models.detection import keypointrcnn_resnet50_fpn
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 from torchvision.models.detection.keypoint_rcnn import KeypointRCNNPredictor
+from torchvision.models.detection import fasterrcnn_resnet50_fpn
 from tqdm import tqdm
-from utils import write_results
+from modules.utils import write_results
 
 
 
@@ -40,11 +37,7 @@ def get_arrow_model(num_classes, num_keypoints=2):
        This is necessary to tailor the model to specific tasks that may have different keypoint structures.
     """
     # Load a model pre-trained on COCO, initialized without pre-trained weights
-    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-    if device == torch.device('cuda'):
-        model = keypointrcnn_resnet50_fpn(weights=KeypointRCNN_ResNet50_FPN_Weights.COCO_V1)
-    else:
-        model = keypointrcnn_resnet50_fpn(weights=False)
+    model = keypointrcnn_resnet50_fpn(weights=None)
 
     # Get the number of input features for the classifier in the box predictor.
     in_features = model.roi_heads.box_predictor.cls_score.in_features
@@ -57,8 +50,7 @@ def get_arrow_model(num_classes, num_keypoints=2):
 
     return model
 
-from torchvision.models.detection import fasterrcnn_resnet50_fpn
-from torchvision.models.detection import FasterRCNN_ResNet50_FPN_Weights
+
 def get_faster_rcnn_model(num_classes):
     """
     Configures and returns a modified Faster R-CNN model based on ResNet-50 with FPN, adapted for a custom number of classes.
@@ -70,7 +62,7 @@ def get_faster_rcnn_model(num_classes):
     - model (torch.nn.Module): The modified Faster R-CNN model.
     """
     # Load a pre-trained Faster R-CNN model
-    model = fasterrcnn_resnet50_fpn(weights=FasterRCNN_ResNet50_FPN_Weights.COCO_V1)
+    model = fasterrcnn_resnet50_fpn(weights=None)
 
     # Get the number of input features for the classifier in the box predictor
     in_features = model.roi_heads.box_predictor.cls_score.in_features

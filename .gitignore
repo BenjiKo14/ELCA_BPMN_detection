@@ -11,3 +11,21 @@ VISION_KEY.json
 .streamlit/secrets.toml
 
 backup/
+
+temp.jpg
+
+Evaluation.ipynb
+
+study/
+
+result_bpmn.bpmn
+
+BPMN_creation.ipynb
+
+*.png
+
+*.ipynb
+
+*.pmw
+
+best_models.txt
