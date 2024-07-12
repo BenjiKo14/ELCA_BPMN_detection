@@ -2,9 +2,10 @@ import numpy as np
 import torch
 from modules.utils import class_dict, object_dict, arrow_dict, find_closest_object, find_other_keypoint, filter_overlap_boxes, iou
 from tqdm import tqdm
-from modules.toXML import get_size_elements, calculate_pool_bounds, create_BPMN_id
+from modules.toXML import create_BPMN_id
 from modules.utils import is_vertical
-import streamlit as st
+
+
 
 
 def non_maximum_suppression(boxes, scores, labels=None, iou_threshold=0.5):
@@ -101,11 +102,6 @@ def object_prediction(model, image, score_threshold=0.5, iou_threshold=0.5):
         scores = scores[selected_boxes]
         labels = labels[selected_boxes]
 
-        #modify the label of the sub-process to task
-        for i in range(len(labels)):
-            if labels[i] == list(object_dict.values()).index('subProcess'):
-                labels[i] = list(object_dict.values()).index('task')
-
         prediction = {
             'boxes': boxes,
             'scores': scores,
@@ -169,9 +165,6 @@ def mix_predictions(objects_pred, arrow_pred):
         object_keypoints.append(keypoints)
 
     #concatenate the two predictions
-    if len(arrow_pred['boxes']) == 0:
-        return objects_pred['boxes'], objects_pred['labels'], objects_pred['scores'], object_keypoints
-    
     boxes = np.concatenate((objects_pred['boxes'], arrow_pred['boxes']))
     labels = np.concatenate((objects_pred['labels'], arrow_pred['labels']))
     scores = np.concatenate((objects_pred['scores'], arrow_pred['scores']))
@@ -181,6 +174,20 @@ def mix_predictions(objects_pred, arrow_pred):
 
 
 def regroup_elements_by_pool(boxes, labels, scores, keypoints, class_dict, iou_threshold=0.3):
+    """
+    Regroups elements by the pool they belong to, and creates a single new pool for elements that are not in any existing pool.
+    Filters out pools that have an IoU greater than the specified threshold.
+
+    Parameters:
+    - boxes (list): List of bounding boxes.
+    - labels (list): List of labels corresponding to each bounding box.
+    - class_dict (dict): Dictionary mapping class indices to class names.
+    - iou_threshold (float): IoU threshold for filtering pools.
+
+    Returns:
+    - dict: A dictionary where each key is a pool's index and the value is a list of elements within that pool.
+    """
+    # Initialize a dictionary to hold the elements in each pool
     pool_dict = {}
 
     # Filter out pools with IoU greater than the threshold
@@ -191,25 +198,36 @@ def regroup_elements_by_pool(boxes, labels, scores, keypoints, class_dict, iou_t
                 if iou(np.array(boxes[i]), np.array(boxes[j])) > iou_threshold:
                     to_delete.append(j)
 
+   
     boxes = np.delete(boxes, to_delete, axis=0)
     labels = np.delete(labels, to_delete)
     scores = np.delete(scores, to_delete)
     keypoints = np.delete(keypoints, to_delete, axis=0)
 
-    pool_indices = [i for i, label in enumerate(labels) if class_dict[label.item()] == 'pool']
+    # Identify the bounding boxes of the pools
+    pool_indices = [i for i, label in enumerate(labels) if (class_dict[label.item()] == 'pool')]
     pool_boxes = [boxes[i] for i in pool_indices]
 
-    if pool_indices:
+
+    if not pool_indices:
+        # If no pools or lanes are detected, create a single pool with all elements
+        labels = np.append(labels, list(class_dict.values()).index('pool'))
+        pool_dict[len(labels) - 1] = list(range(len(boxes)))
+    else:
+        # Initialize each pool index with an empty list
         for pool_index in pool_indices:
             pool_dict[pool_index] = []
 
+        # Initialize a list for elements not in any pool
         elements_not_in_pool = []
 
+        # Iterate over all elements
         for i, box in enumerate(boxes):
+            if i in pool_indices or class_dict[labels[i]] == 'messageFlow':
+                continue  # Skip pool boxes themselves and messageFlow elements
             assigned_to_pool = False
-            if i in pool_indices or class_dict[labels[i]] in ['messageFlow', 'pool']:
-                continue
             for j, pool_box in enumerate(pool_boxes):
+                # Check if the element is within the pool's bounding box
                 if (box[0] >= pool_box[0] and box[1] >= pool_box[1] and 
                     box[2] <= pool_box[2] and box[3] <= pool_box[3]):
                     pool_index = pool_indices[j]
@@ -217,32 +235,19 @@ def regroup_elements_by_pool(boxes, labels, scores, keypoints, class_dict, iou_t
                     assigned_to_pool = True
                     break
             if not assigned_to_pool:
-                if class_dict[labels[i]] not in ['messageFlow', 'lane', 'pool']:
+                if class_dict[labels[i]] != 'messageFlow' and class_dict[labels[i]] != 'lane':
                     elements_not_in_pool.append(i)
 
-        if len(elements_not_in_pool) > 1:
-            new_elements_not_in_pool = [i for i in elements_not_in_pool if class_dict[labels[i]] not in ['messageFlow', 'lane', 'pool']]
-            
-            # Indices of relevant classes
-            sequence_flow_index = list(class_dict.values()).index('sequenceFlow')
-            message_flow_index = list(class_dict.values()).index('messageFlow')
-            data_association_index = list(class_dict.values()).index('dataAssociation')
+        if elements_not_in_pool:
+            new_pool_index = max(pool_dict.keys()) + 1
+            labels = np.append(labels, list(class_dict.values()).index('pool'))
+            pool_dict[new_pool_index] = elements_not_in_pool
 
-            if all(labels[i] in {sequence_flow_index, message_flow_index, data_association_index} for i in new_elements_not_in_pool):
-                print('The new pool contains only sequenceFlow, messageFlow, or dataAssociation') 
-
-            elif len(new_elements_not_in_pool) > 1:
-                new_pool_index = len(labels)
-                box = calculate_pool_bounds(boxes, labels, new_elements_not_in_pool, None)
-                boxes = np.append(boxes, [box], axis=0)
-                labels = np.append(labels, list(class_dict.values()).index('pool'))
-                scores = np.append(scores, 1.0)
-                keypoints = np.append(keypoints, np.zeros((1, 2, 3)), axis=0)
-                pool_dict[new_pool_index] = new_elements_not_in_pool
-                print(f"Created a new pool index {new_pool_index} with elements: {new_elements_not_in_pool}")
-       
+    # Separate empty pools
     non_empty_pools = {k: v for k, v in pool_dict.items() if v}
     empty_pools = {k: v for k, v in pool_dict.items() if not v}
+
+    # Merge non-empty pools followed by empty pools
     pool_dict = {**non_empty_pools, **empty_pools}
 
     return pool_dict, boxes, labels, scores, keypoints
@@ -274,84 +279,64 @@ def create_links(keypoints, boxes, labels, class_dict):
 
     return links, best_points
 
-def correction_labels(boxes, labels, class_dict, pool_dict, flow_links):
-    sequence_flow_index = list(class_dict.values()).index('sequenceFlow')
-    message_flow_index = list(class_dict.values()).index('messageFlow')
-    data_association_index = list(class_dict.values()).index('dataAssociation')
-    data_object_index = list(class_dict.values()).index('dataObject')
-    data_store_index = list(class_dict.values()).index('dataStore')
-    message_event_index = list(class_dict.values()).index('messageEvent')
-    senquence_flow_indexx = list(class_dict.values()).index('sequenceFlow')
-
+def correction_labels(boxes, labels, class_dict, pool_dict, flow_links): 
     for pool_index, elements in pool_dict.items():
         print(f"Pool {pool_index} contains elements: {elements}")
-        
-        # Check if the label sequenceFlow or messageFlow is good
-        for i, (id1, id2) in enumerate(flow_links):
-            if labels[i] in {sequence_flow_index, message_flow_index}:
+        #check if the label sequenceflow is good
+        for i in range(len(flow_links)):
+            if labels[i] == list(class_dict.values()).index('sequenceFlow'):
+                id1, id2 = flow_links[i]
                 if id1 is not None and id2 is not None:
-                    # Check if each link is in the same pool
+                    #check if each link is in the same pool
                     if id1 in elements and id2 in elements:
-                        # Check if the link is between a dataObject or a dataStore
-                        if labels[id1] in {data_object_index, data_store_index} or labels[id2] in {data_object_index, data_store_index}:
-                            print('Change the link from sequenceFlow/messageFlow to dataAssociation')
-                            labels[i] = data_association_index
+                        #check if the link is between a dataObject or a dataStore
+                        if labels[id1] == 8 or labels[id2] == 8 or labels[id1] == 9 or labels[id2] == 9:
+                            print('change the link from sequenceFlow to dataAssociation')
+                            labels[i]=list(class_dict.values()).index('dataAssociation')
                         else:
                             continue
                     elif id1 not in elements and id2 not in elements:
                         continue
                     else:
-                        print('Change the link from sequenceFlow to messageFlow')
-                        labels[i] = message_flow_index
+                        print('change the link from sequenceFlow to messageFlow')
+                        labels[i]=list(class_dict.values()).index('messageFlow')
 
-    # Check if dataAssociation is connected to a dataObject
-    for i, (id1, id2) in enumerate(flow_links):
-        if labels[i] == data_association_index:
-            if id1 is not None and id2 is not None:
+                    
+
+    for i in range(len(labels)):
+        #check if dataAssociation is connected to a dataObject
+        if labels[i] == list(class_dict.values()).index('dataAssociation'):
+            id1, id2 = flow_links[i]
+            if (id1 and id2) is not None:
                 label1 = labels[id1]
                 label2 = labels[id2]
-                if data_object_index in {label1, label2} or data_store_index in {label1, label2}:
+                if label1 == list(class_dict.values()).index('dataObject') or label2 == list(class_dict.values()).index('dataObject'):
                     continue
-                elif message_event_index in {label1, label2}: 
-                    print('Change the link from dataAssociation to messageFlow')
-                    labels[i] = message_flow_index
                 else:
-                    print('Change the link from dataAssociation to sequenceFlow')
-                    labels[i] = senquence_flow_indexx
+                    print('change the link from dataAssociation to messageFlow')
+                    labels[i]=list(class_dict.values()).index('messageFlow')
+                
 
     return labels, flow_links
 
 
-
-def last_correction(boxes, labels, scores, keypoints, bpmn_id, links, best_points, pool_dict, limit_area=10000):
+def last_correction(boxes, labels, scores, keypoints, links, best_points, pool_dict):
 
     #delete pool that are have only messageFlow on it
     delete_pool = []
     for pool_index, elements in pool_dict.items():
-        #find the position of the pool_index in the bpmn_id
-        if pool_index in bpmn_id:
-            position = bpmn_id.index(pool_index)
-        else:
-            continue 
         if all([labels[i] in [list(class_dict.values()).index('messageFlow'),
                               list(class_dict.values()).index('sequenceFlow'),
-                              list(class_dict.values()).index('dataAssociation'),
-                              list(class_dict.values()).index('lane')] for i in elements]):
+                              list(class_dict.values()).index('dataAssociation')] for i in elements]):
             if len(elements) > 0:
-                delete_pool.append(position)
-                print(f"Pool {pool_index} contains only arrow elements, deleting it")   
+                delete_pool.append(pool_dict[pool_index])
+                print(f"Pool {pool_index} contains only arrow elements, deleting it")
 
-        #calcul the area of the pool$
-        if position < len(boxes):
-            pool = boxes[position]
-            area = (pool[2] - pool[0]) * (pool[3] - pool[1])
-            if len(pool_dict)>1 and area < limit_area:
-                delete_pool.append(position)
-                print(f"Pool {pool_index} is too small, deleting it")     
-
-            if is_vertical(boxes[position]):
-                delete_pool.append(position)
-                print(f"Pool {position} is vertical, deleting it")
+    #sort index
+    delete_pool = sorted(delete_pool, reverse=True)
+    for pool in delete_pool:
+        index = list(pool_dict.keys())[list(pool_dict.values()).index(pool)]
+        del pool_dict[index]
 
 
     delete_elements = []
@@ -368,16 +353,10 @@ def last_correction(boxes, labels, scores, keypoints, bpmn_id, links, best_point
                         print('delete element', i)
                         delete_elements.append(i)
 
-    #concatenate the delete_elements and the delete_pool
-    delete_elements = delete_elements + delete_pool
-    #delete double value in delete_elements
-    delete_elements = list(set(delete_elements))
-
     boxes = np.delete(boxes, delete_elements, axis=0)
     labels = np.delete(labels, delete_elements)
     scores = np.delete(scores, delete_elements)
     keypoints = np.delete(keypoints, delete_elements, axis=0)
-    bpmn_id = [point for i, point in enumerate(bpmn_id) if i not in delete_elements]
     links = np.delete(links, delete_elements, axis=0)
     best_points = [point for i, point in enumerate(best_points) if i not in delete_elements]
 
@@ -385,7 +364,7 @@ def last_correction(boxes, labels, scores, keypoints, bpmn_id, links, best_point
     for pool_index, elements in pool_dict.items():
         pool_dict[pool_index] = [i for i in elements if i not in delete_elements]
 
-    return boxes, labels, scores, keypoints, bpmn_id, links, best_points, pool_dict
+    return boxes, labels, scores, keypoints, links, best_points, pool_dict
 
 def give_link_to_element(links, labels):
     #give a link to event to allow the creation of the BPMN id with start, indermediate and end event
@@ -397,51 +376,6 @@ def give_link_to_element(links, labels):
                         links[id2][0] = i
         return links
 
-
-def generate_data(image, boxes, labels, scores, keypoints, bpmn_id, flow_links, best_points, pool_dict):
-            idx = []
-            for i in range(len(labels)):
-                idx.append(i) 
-              
-
-            data = {
-                'image': image,
-                'idx': idx,
-                'boxes': boxes,
-                'labels': labels,
-                'scores': scores,
-                'keypoints': keypoints,
-                'links': flow_links,
-                'best_points': best_points,
-                'pool_dict': pool_dict,
-                'BPMN_id': bpmn_id,
-            }
-
-
-            return data
-
-def develop_prediction(boxes, labels, scores, keypoints, class_dict, correction=True):
-
-    pool_dict, boxes, labels, scores, keypoints = regroup_elements_by_pool(boxes, labels, scores, keypoints, class_dict)
-
-    bpmn_id, pool_dict = create_BPMN_id(labels,pool_dict)
-
-    # Create links between elements
-    flow_links, best_points = create_links(keypoints, boxes, labels, class_dict)
-    
-    #Correct the labels of some sequenceflow that cross multiple pool
-    if correction:
-        labels, flow_links = correction_labels(boxes, labels, class_dict, pool_dict, flow_links)
-    
-    #give a link to event to allow the creation of the BPMN id with start, indermediate and end event
-    flow_links = give_link_to_element(flow_links, labels)
-    
-    boxes,labels,scores,keypoints,bpmn_id, flow_links,best_points,pool_dict = last_correction(boxes,labels,scores,keypoints,bpmn_id,flow_links,best_points, pool_dict)  
-
-    return boxes, labels, scores, keypoints, bpmn_id, flow_links, best_points, pool_dict 
-
-    
-
 def full_prediction(model_object, model_arrow, image, score_threshold=0.5, iou_threshold=0.5, resize=True, distance_treshold=15):
     model_object.eval()  # Set the model to evaluation mode
     model_arrow.eval()  # Set the model to evaluation mode
@@ -450,17 +384,50 @@ def full_prediction(model_object, model_arrow, image, score_threshold=0.5, iou_t
     with torch.no_grad():  # Disable gradient calculation for inference
         _, objects_pred = object_prediction(model_object, image, score_threshold=score_threshold, iou_threshold=0.1)
         _, arrow_pred = arrow_prediction(model_arrow, image, score_threshold=score_threshold, iou_threshold=iou_threshold, distance_treshold=distance_treshold)
+        
+        #print('Object prediction:', objects_pred)
 
-        st.session_state.arrow_pred = arrow_pred
-        
+
         boxes, labels, scores, keypoints = mix_predictions(objects_pred, arrow_pred)
+    
+        # Regroup elements by pool
+        pool_dict, boxes, labels, scores, keypoints = regroup_elements_by_pool(boxes, labels, scores, keypoints, class_dict)
+        # Create links between elements
+        flow_links, best_points = create_links(keypoints, boxes, labels, class_dict)
+        #Correct the labels of some sequenceflow that cross multiple pool
+        labels, flow_links = correction_labels(boxes, labels, class_dict, pool_dict, flow_links)
+        #give a link to event to allow the creation of the BPMN id with start, indermediate and end event
+        flow_links = give_link_to_element(flow_links, labels)
         
-        boxes, labels, scores, keypoints, bpmn_id, flow_links, best_points, pool_dict = develop_prediction(boxes, labels, scores, keypoints, class_dict)
-        
+        boxes,labels,scores,keypoints,flow_links,best_points,pool_dict = last_correction(boxes,labels,scores,keypoints,flow_links,best_points, pool_dict)         
+
         image = image.permute(1, 2, 0).cpu().numpy()
         image = (image * 255).astype(np.uint8)
-    
-        data = generate_data(image, boxes, labels, scores, keypoints, bpmn_id, flow_links, best_points, pool_dict)
+        idx = []
+        for i in range(len(labels)):
+            idx.append(i) 
+        bpmn_id = [class_dict[labels[i]] for i in range(len(labels))]   
+
+        data = {
+            'image': image,
+            'idx': idx,
+            'boxes': boxes,
+            'labels': labels,
+            'scores': scores,
+            'keypoints': keypoints,
+            'links': flow_links,
+            'best_points': best_points,
+            'pool_dict': pool_dict,
+            'BPMN_id': bpmn_id,
+        }
+
+
+        # give a unique BPMN id to each element
+        data = create_BPMN_id(data)   
+
+        
+
+        
 
         return image, data
 

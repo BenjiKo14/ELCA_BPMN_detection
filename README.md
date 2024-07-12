@@ -1,11 +1,9 @@
 ---
-title: Sketch To BPMN
-emoji: 📈
-colorFrom: red
-colorTo: green
-sdk: streamlit
-sdk_version: 1.35.0
-app_file: app.py
+title: Sketch To BPMN API
+emoji: 🚀
+colorFrom: yellow
+colorTo: yellow
+sdk: docker
 pinned: false
 ---
 

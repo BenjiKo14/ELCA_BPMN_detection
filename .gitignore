@@ -1,31 +1,8 @@
 
-__pycache__/
-
-temp/
-
-
-VISION_KEY.json
+modules/__pycache__/
 
 *.pth
 
-.streamlit/secrets.toml
+VISION_KEY.json
 
-backup/
-
-temp.jpg
-
-Evaluation.ipynb
-
-study/
-
-result_bpmn.bpmn
-
-BPMN_creation.ipynb
-
-*.png
-
-*.ipynb
-
-*.pmw
-
-best_models.txt
+test.py
